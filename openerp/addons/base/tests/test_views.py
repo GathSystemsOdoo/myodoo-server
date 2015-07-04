@@ -663,7 +663,7 @@ class test_views(ViewCase):
             name='base view',
             model=model,
             priority=1,
-            arch="""<?xml version="1.0"?>
+            arch_db="""<?xml version="1.0"?>
                         <tree string="view">
                           <field name="url"/>
                         </tree>
@@ -677,7 +677,7 @@ class test_views(ViewCase):
             model=model,
             priority=1,
             inherit_id=vid,
-            arch="""<?xml version="1.0"?>
+            arch_db="""<?xml version="1.0"?>
                         <xpath expr="//field[@name='url']" position="before">
                           <field name="name"/>
                         </xpath>
@@ -691,7 +691,7 @@ class test_views(ViewCase):
             model=model,
             priority=5,
             inherit_id=vid,
-            arch="""<?xml version="1.0"?>
+            arch_db="""<?xml version="1.0"?>
                         <xpath expr="//field[@name='name']" position="after">
                           <field name="target"/>
                         </xpath>

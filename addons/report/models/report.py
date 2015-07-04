@@ -1,23 +1,5 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2014-Today OpenERP SA (<http://www.openerp.com>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from openerp import api
 from openerp import SUPERUSER_ID
@@ -28,6 +10,7 @@ from openerp.tools.misc import find_in_path
 from openerp.tools.translate import _
 from openerp.addons.web.http import request
 from openerp.tools.safe_eval import safe_eval as eval
+from openerp.exceptions import UserError
 
 import re
 import time
@@ -49,10 +32,7 @@ from pyPdf import PdfFileWriter, PdfFileReader
 _logger = logging.getLogger(__name__)
 
 def _get_wkhtmltopdf_bin():
-    wkhtmltopdf_bin = find_in_path('wkhtmltopdf')
-    if wkhtmltopdf_bin is None:
-        raise IOError
-    return wkhtmltopdf_bin
+    return find_in_path('wkhtmltopdf')
 
 
 #--------------------------------------------------------------------------
@@ -296,10 +276,7 @@ class Report(osv.Model):
         try:
             report = report_obj.browse(cr, uid, idreport[0], context=context)
         except IndexError:
-            raise osv.except_osv(
-                _('Bad Report Reference'),
-                _('This report is not loaded into the database: %s.' % report_name)
-            )
+            raise UserError(_("Bad Report Reference") + _("This report is not loaded into the database: %s.") % report_name)
 
         return {
             'context': context,
@@ -366,7 +343,7 @@ class Report(osv.Model):
     def _check_wkhtmltopdf(self):
         return wkhtmltopdf_state
 
-    def _run_wkhtmltopdf(self, cr, uid, headers, footers, bodies, landscape, paperformat, spec_paperformat_args=None, save_in_attachment=None):
+    def _run_wkhtmltopdf(self, cr, uid, headers, footers, bodies, landscape, paperformat, spec_paperformat_args=None, save_in_attachment={}):
         """Execute wkhtmltopdf as a subprocess in order to convert html given in input into a pdf
         document.
 
@@ -446,14 +423,12 @@ class Report(osv.Model):
             try:
                 wkhtmltopdf = [_get_wkhtmltopdf_bin()] + command_args + local_command_args
                 wkhtmltopdf += [content_file_path] + [pdfreport_path]
-
                 process = subprocess.Popen(wkhtmltopdf, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 out, err = process.communicate()
 
                 if process.returncode not in [0, 1]:
-                    raise osv.except_osv(_('Report (PDF)'),
-                                         _('Wkhtmltopdf failed (error code: %s). '
-                                           'Message: %s') % (str(process.returncode), err))
+                    raise UserError(_('Wkhtmltopdf failed (error code: %s). '
+                                        'Message: %s') % (str(process.returncode), err))
 
                 # Save the pdf in attachment if marked
                 if reporthtml[0] is not False and save_in_attachment.get(reporthtml[0]):
@@ -468,7 +443,7 @@ class Report(osv.Model):
                         try:
                             self.pool['ir.attachment'].create(cr, uid, attachment)
                         except AccessError:
-                            _logger.warning("Cannot save PDF report %r as attachment",
+                            _logger.info("Cannot save PDF report %r as attachment",
                                             attachment['name'])
                         else:
                             _logger.info('The PDF document %s is now saved in the database',

@@ -1,23 +1,5 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-2010 Tiny SPRL (<http://tiny.be>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from openerp import tools
 from openerp.addons.crm import crm
@@ -33,15 +15,15 @@ AVAILABLE_STATES = [
 
 
 class crm_phonecall_report(osv.osv):
-    """ Phone calls by user and section """
+    """ Phone calls by user and team """
 
     _name = "crm.phonecall.report"
-    _description = "Phone calls by user and section"
+    _description = "Phone calls by user and team"
     _auto = False
 
     _columns = {
         'user_id':fields.many2one('res.users', 'User', readonly=True),
-        'section_id':fields.many2one('crm.case.section', 'Section', readonly=True),
+        'team_id':fields.many2one('crm.team', 'Sales Team', oldname='section_id', readonly=True),
         'priority': fields.selection([('0','Low'), ('1','Normal'), ('2','High')], 'Priority'),
         'nbr': fields.integer('# of Cases', readonly=True),  # TDE FIXME master: rename into nbr_cases
         'state': fields.selection(AVAILABLE_STATES, 'Status', readonly=True),
@@ -49,9 +31,7 @@ class crm_phonecall_report(osv.osv):
         'delay_close': fields.float('Delay to close', digits=(16,2),readonly=True, group_operator="avg",help="Number of Days to close the case"),
         'duration': fields.float('Duration', digits=(16,2),readonly=True, group_operator="avg"),
         'delay_open': fields.float('Delay to open',digits=(16,2),readonly=True, group_operator="avg",help="Number of Days to open the case"),
-        'categ_id': fields.many2one('crm.case.categ', 'Category', \
-                        domain="[('section_id','=',section_id),\
-                        ('object_id.model', '=', 'crm.phonecall')]"),
+        'categ_id': fields.many2one('crm.phonecall.category', 'Category'),
         'partner_id': fields.many2one('res.partner', 'Partner' , readonly=True),
         'company_id': fields.many2one('res.company', 'Company', readonly=True),
         'opening_date': fields.datetime('Opening Date', readonly=True, select=True),
@@ -60,7 +40,7 @@ class crm_phonecall_report(osv.osv):
 
     def init(self, cr):
 
-        """ Phone Calls By User And Section
+        """ Phone Calls By User And Team
             @param cr: the current row, from the database cursor,
         """
         tools.drop_view_if_exists(cr, 'crm_phonecall_report')
@@ -72,7 +52,7 @@ class crm_phonecall_report(osv.osv):
                     c.date_closed as date_closed,
                     c.state,
                     c.user_id,
-                    c.section_id,
+                    c.team_id,
                     c.categ_id,
                     c.partner_id,
                     c.duration,
@@ -85,5 +65,3 @@ class crm_phonecall_report(osv.osv):
                 from
                     crm_phonecall c
             )""")
-
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

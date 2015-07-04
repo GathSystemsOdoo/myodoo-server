@@ -1,23 +1,5 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-2011 OpenERP S.A (<http://www.openerp.com>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 import logging
 
@@ -25,6 +7,7 @@ from openerp.osv import fields, osv
 from openerp.tools.translate import _
 from openerp.tools import email_split
 from openerp import SUPERUSER_ID
+from openerp.exceptions import UserError
 
 _logger = logging.getLogger(__name__)
 
@@ -160,7 +143,7 @@ class wizard_user(osv.osv_memory):
     def action_apply(self, cr, uid, ids, context=None):
         error_msg = self.get_error_messages(cr, uid, ids, context=context)
         if error_msg:
-            raise osv.except_osv(_('Contacts Error'), "\n\n".join(error_msg))
+            raise UserError( "\n\n".join(error_msg))
 
         for wizard_user in self.browse(cr, SUPERUSER_ID, ids, context):
             portal = wizard_user.wizard_id.portal_id
@@ -222,8 +205,7 @@ class wizard_user(osv.osv_memory):
         this_context = context
         this_user = self.pool.get('res.users').browse(cr, SUPERUSER_ID, uid, context)
         if not this_user.email:
-            raise osv.except_osv(_('Email Required'),
-                _('You must have an email address in your User Preferences to send emails.'))
+            raise UserError(_('You must have an email address in your User Preferences to send emails.'))
 
         # determine subject and body in the portal user's language
         user = self._retrieve_user(cr, SUPERUSER_ID, wizard_user, context)
@@ -251,9 +233,7 @@ class wizard_user(osv.osv_memory):
             'subject': _(WELCOME_EMAIL_SUBJECT) % data,
             'body_html': '<pre>%s</pre>' % (_(WELCOME_EMAIL_BODY) % data),
             'state': 'outgoing',
-            'type': 'email',
+            'message_type': 'email',
         }
         mail_id = mail_mail.create(cr, uid, mail_values, context=this_context)
         return mail_mail.send(cr, uid, [mail_id], context=this_context)
-
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

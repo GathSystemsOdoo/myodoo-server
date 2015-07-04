@@ -1,7 +1,7 @@
 # coding: utf-8
 
 from openerp import models, api, _
-from openerp.exceptions import Warning
+from openerp.exceptions import UserError
 
 
 class sale_order_line(models.Model):
@@ -31,7 +31,7 @@ class purchase_order(models.Model):
         if self.invoice_method == 'picking' and self.location_id.usage == 'customer':
             for proc in self.order_line.mapped('procurement_ids'):
                 if proc.sale_line_id.order_id.order_policy == 'picking':
-                    raise Warning(_('In the case of a dropship route, it is not possible to have an invoicing control set on "Based on incoming shipments" and a sale order with an invoice creation on "On Delivery Order"'))
+                    raise UserError(_('In the case of a dropship route, it is not possible to have an invoicing control set on "Based on incoming shipments" and a sale order with an invoice creation on "On Delivery Order"'))
 
     @api.multi
     def wkf_confirm_order(self):

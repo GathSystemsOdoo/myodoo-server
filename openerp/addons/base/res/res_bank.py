@@ -1,26 +1,9 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#    
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-2009 Tiny SPRL (<http://tiny.be>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.     
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from openerp.osv import fields, osv
 from openerp.tools.translate import _
+from openerp.exceptions import UserError
 
 class Bank(osv.osv):
     _description='Bank'
@@ -30,7 +13,7 @@ class Bank(osv.osv):
         'name': fields.char('Name', required=True),
         'street': fields.char('Street'),
         'street2': fields.char('Street2'),
-        'zip': fields.char('Zip', change_default=True, size=24),
+        'zip': fields.char('Zip', change_default=True),
         'city': fields.char('City'),
         'state': fields.many2one("res.country.state", 'Fed. State',
             domain="[('country_id', '=', country)]"),
@@ -39,7 +22,7 @@ class Bank(osv.osv):
         'phone': fields.char('Phone'),
         'fax': fields.char('Fax'),
         'active': fields.boolean('Active'),
-        'bic': fields.char('Bank Identifier Code', size=64,
+        'bic': fields.char('Bank Identifier Code',
             help="Sometimes called BIC or Swift."),
     }
     _defaults = {
@@ -113,14 +96,13 @@ class res_partner_bank(osv.osv):
         return value
 
     _columns = {
-        'name': fields.char('Bank Account'), # to be removed in v6.2 ?
-        'acc_number': fields.char('Account Number', size=64, required=True),
+        'acc_number': fields.char('Account Number', required=True),
         'bank': fields.many2one('res.bank', 'Bank'),
-        'bank_bic': fields.char('Bank Identifier Code', size=16),
+        'bank_bic': fields.char('Bank Identifier Code'),
         'bank_name': fields.char('Bank Name'),
         'owner_name': fields.char('Account Owner Name'),
         'street': fields.char('Street'),
-        'zip': fields.char('Zip', change_default=True, size=24),
+        'zip': fields.char('Zip', change_default=True),
         'city': fields.char('City'),
         'country_id': fields.many2one('res.country', 'Country',
             change_default=True),
@@ -128,11 +110,12 @@ class res_partner_bank(osv.osv):
             change_default=True, domain="[('country_id','=',country_id)]"),
         'company_id': fields.many2one('res.company', 'Company',
             ondelete='cascade', help="Only if this bank account belong to your company"),
-        'partner_id': fields.many2one('res.partner', 'Account Owner', ondelete='cascade', select=True, domain=['|',('is_company','=',True),('parent_id','=',False)]),
-        'state': fields.selection(_bank_type_get, 'Bank Account Type', required=True,
+        'partner_id': fields.many2one('res.partner', 'Account Holder', ondelete='cascade', select=True, domain=['|',('is_company','=',True),('parent_id','=',False)]),
+        'state': fields.selection(_bank_type_get, 'Bank Account Type',
             change_default=True),
         'sequence': fields.integer('Sequence'),
-        'footer': fields.boolean("Display on Reports", help="Display this bank account on the footer of printed documents like invoices and sales orders.")
+        'footer': fields.boolean("Display on Reports", help="Display this bank account on the footer of printed documents like invoices and sales orders."),
+        'currency_id': fields.many2one('res.currency', string='Currency', help="Currency of the bank account and its related journal."),
     }
 
     _defaults = {
@@ -148,7 +131,7 @@ class res_partner_bank(osv.osv):
             cursor, user, 'country_id', context=context),
         'state_id': lambda obj, cursor, user, context: obj._default_value(
             cursor, user, 'state_id', context=context),
-        'name': '/'
+        'name': '/',
     }
 
     def fields_get(self, cr, uid, allfields=None, context=None, write_access=True, attributes=None):
@@ -186,7 +169,10 @@ class res_partner_bank(osv.osv):
                     data = dict((k, v or '') for (k, v) in data.iteritems())
                     name = bank_code_format[data['state']] % data
                 except Exception:
-                    raise osv.except_osv(_("Formating Error"), _("Invalid Bank Account Type Name format."))
+                    raise UserError(_("Bank account name formating error") + ': ' + _("Check the format_layout field set on the Bank Account Type."))
+            if data.get('currency_id'):
+                currency_name = self.pool.get('res.currency').browse(cr, uid, data['currency_id'][0], context=context).name
+                name += ' (' + currency_name + ')'
             res.append((data.get('id', False), name))
         return res
 
@@ -215,7 +201,6 @@ class res_partner_bank(osv.osv):
             result['bank_bic'] = bank.bic
         return {'value': result}
 
-
     def onchange_partner_id(self, cr, uid, ids, partner_id, context=None):
         result = {}
         if partner_id is not False:
@@ -224,9 +209,7 @@ class res_partner_bank(osv.osv):
             result['owner_name'] = part.name
             result['street'] = part.street or False
             result['city'] = part.city or False
-            result['zip'] =  part.zip or False
-            result['country_id'] =  part.country_id.id
+            result['zip'] = part.zip or False
+            result['country_id'] = part.country_id.id
             result['state_id'] = part.state_id.id
         return {'value': result}
-
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

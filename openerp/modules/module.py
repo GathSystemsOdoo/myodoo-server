@@ -1,24 +1,5 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-2009 Tiny SPRL (<http://tiny.be>).
-#    Copyright (C) 2010-2014 OpenERP s.a. (<http://openerp.com>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 import functools
 import imp
@@ -158,7 +139,7 @@ def get_module_filetree(module, dir='.'):
 
     return tree
 
-def get_module_resource(module, *args):
+def get_resource_path(module, *args):
     """Return the full path of a resource of the given module.
 
     :param module: module name
@@ -167,7 +148,6 @@ def get_module_resource(module, *args):
     :rtype: str
     :return: absolute path to the resource
 
-    TODO name it get_resource_path
     TODO make it available inside on osv object (self.get_resource_path)
     """
     mod_path = get_module_path(module)
@@ -178,6 +158,33 @@ def get_module_resource(module, *args):
         if os.path.exists(resource_path):
             return resource_path
     return False
+
+# backwards compatibility
+get_module_resource = get_resource_path
+
+def get_resource_from_path(path):
+    """Tries to extract the module name and the resource's relative path
+    out of an absolute resource path.
+
+    If operation is successfull, returns a tuple containing the module name, the relative path
+    to the resource using '/' as filesystem seperator[1] and the same relative path using
+    os.path.sep seperators.
+
+    [1] same convention as the resource path declaration in manifests
+
+    :param path: absolute resource path
+
+    :rtype: tuple
+    :return: tuple(module_name, relative_path, os_relative_path) if possible, else None
+    """
+    resource = [path.replace(adpath, '') for adpath in ad_paths if path.startswith(adpath)]
+    if resource:
+        relative = resource[0].split(os.path.sep)
+        if not relative[0]:
+            relative.pop(0)
+        module = relative.pop(0)
+        return (module, '/'.join(relative), os.path.sep.join(relative))
+    return None
 
 def get_module_icon(module):
     iconpath = ['static', 'description', 'icon.png']
@@ -482,5 +489,3 @@ def unwrap_suite(test):
     for item in itertools.chain.from_iterable(
             itertools.imap(unwrap_suite, subtests)):
         yield item
-
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

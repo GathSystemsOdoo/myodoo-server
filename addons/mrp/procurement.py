@@ -1,23 +1,5 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-2010 Tiny SPRL (<http://tiny.be>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
@@ -41,10 +23,11 @@ class procurement_order(osv.osv):
         'production_id': fields.many2one('mrp.production', 'Manufacturing Order'),
     }
 
-    def propagate_cancel(self, cr, uid, procurement, context=None):
-        if procurement.rule_id.action == 'manufacture' and procurement.production_id:
-            self.pool.get('mrp.production').action_cancel(cr, uid, [procurement.production_id.id], context=context)
-        return super(procurement_order, self).propagate_cancel(cr, uid, procurement, context=context)
+    def propagate_cancels(self, cr, uid, ids, context=None):
+        for procurement in self.browse(cr, uid, ids, context=context):
+            if procurement.rule_id.action == 'manufacture' and procurement.production_id:
+                self.pool.get('mrp.production').action_cancel(cr, uid, [procurement.production_id.id], context=context)
+        return super(procurement_order, self).propagate_cancels(cr, uid, ids, context=context)
 
     def _run(self, cr, uid, procurement, context=None):
         if procurement.rule_id and procurement.rule_id.action == 'manufacture':
@@ -130,6 +113,3 @@ class procurement_order(osv.osv):
     def production_order_create_note(self, cr, uid, procurement, context=None):
         body = _("Manufacturing Order <em>%s</em> created.") % (procurement.production_id.name,)
         self.message_post(cr, uid, [procurement.id], body=body, context=context)
-
-
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

@@ -1,29 +1,12 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-today OpenERP SA (<http://www.openerp.com>)
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 import crm
 from datetime import datetime
 from openerp.osv import fields, osv
 from openerp.tools import DEFAULT_SERVER_DATETIME_FORMAT
 from openerp.tools.translate import _
+from openerp.exceptions import UserError
 
 class crm_phonecall(osv.osv):
     """ Model for CRM phonecalls """
@@ -36,7 +19,7 @@ class crm_phonecall(osv.osv):
         'date_action_last': fields.datetime('Last Action', readonly=1),
         'date_action_next': fields.datetime('Next Action', readonly=1),
         'create_date': fields.datetime('Creation Date' , readonly=True),
-        'section_id': fields.many2one('crm.case.section', 'Sales Team', \
+        'team_id': fields.many2one('crm.team', 'Sales Team', oldname='section_id',\
                         select=True, help='Sales team to which Case belongs to.'),
         'user_id': fields.many2one('res.users', 'Responsible'),
         'partner_id': fields.many2one('res.partner', 'Contact'),
@@ -57,9 +40,7 @@ class crm_phonecall(osv.osv):
         'name': fields.char('Call Summary', required=True),
         'active': fields.boolean('Active', required=False),
         'duration': fields.float('Duration', help='Duration in minutes and seconds.'),
-        'categ_id': fields.many2one('crm.case.categ', 'Category', \
-                        domain="['|',('section_id','=',section_id),('section_id','=',False),\
-                        ('object_id.model', '=', 'crm.phonecall')]"),
+        'categ_id': fields.many2one('crm.phonecall.category', 'Category'),
         'partner_phone': fields.char('Phone'),
         'partner_mobile': fields.char('Mobile'),
         'priority': fields.selection([('0','Low'), ('1','Normal'), ('2','High')], 'Priority'),
@@ -78,6 +59,7 @@ class crm_phonecall(osv.osv):
         'priority': '1',
         'state':  _get_default_state,
         'user_id': lambda self, cr, uid, ctx: uid,
+        'team_id': lambda s, cr, uid, c: s.pool['crm.team']._get_default_team_id(cr, uid, context=c),
         'active': 1
     }
 
@@ -111,7 +93,7 @@ class crm_phonecall(osv.osv):
         return True
 
     def schedule_another_phonecall(self, cr, uid, ids, schedule_time, call_summary, \
-                    user_id=False, section_id=False, categ_id=False, action='schedule', context=None):
+                    user_id=False, team_id=False, categ_id=False, action='schedule', context=None):
         """
         action :('schedule','Schedule a call'), ('log','Log a call')
         """
@@ -124,8 +106,8 @@ class crm_phonecall(osv.osv):
             except ValueError:
                 pass
         for call in self.browse(cr, uid, ids, context=context):
-            if not section_id:
-                section_id = call.section_id and call.section_id.id or False
+            if not team_id:
+                team_id = call.team_id and call.team_id.id or False
             if not user_id:
                 user_id = call.user_id and call.user_id.id or False
             if not schedule_time:
@@ -136,7 +118,7 @@ class crm_phonecall(osv.osv):
                     'categ_id' : categ_id or False,
                     'description' : call.description or False,
                     'date' : schedule_time,
-                    'section_id' : section_id or False,
+                    'team_id' : team_id or False,
                     'partner_id': call.partner_id and call.partner_id.id or False,
                     'partner_phone' : call.partner_phone,
                     'partner_mobile' : call.partner_mobile,
@@ -164,7 +146,7 @@ class crm_phonecall(osv.osv):
         if opportunity_id:
             opportunity = self.pool.get('crm.lead').browse(cr, uid, opportunity_id, context=context)
             values = {
-                'section_id' : opportunity.section_id and opportunity.section_id.id or False,
+                'team_id' : opportunity.team_id and opportunity.team_id.id or False,
                 'partner_phone' : opportunity.phone,
                 'partner_mobile' : opportunity.mobile,
                 'partner_id' : opportunity.partner_id and opportunity.partner_id.id or False,
@@ -245,7 +227,7 @@ class crm_phonecall(osv.osv):
                             'probability': probability,
                             'partner_id': partner_id or False,
                             'mobile': default_contact and default_contact.mobile,
-                            'section_id': call.section_id and call.section_id.id or False,
+                            'team_id': call.team_id and call.team_id.id or False,
                             'description': call.description or False,
                             'priority': call.priority,
                             'type': 'opportunity',
@@ -277,6 +259,7 @@ class crm_phonecall(osv.osv):
             'default_user_id': uid,
             'default_email_from': phonecall.email_from,
             'default_name': phonecall.name,
+            'default_opportunity_id': phonecall.opportunity_id.id,
         }
         return res
 
@@ -288,7 +271,7 @@ class crm_phonecall(osv.osv):
         :return dict: containing view information
         """
         if len(ids) != 1:
-            raise osv.except_osv(_('Warning!'),_('It\'s only possible to convert one phonecall at a time.'))
+            raise UserError(_('It\'s only possible to convert one phonecall at a time.'))
 
         opportunity_dict = self.convert_opportunity(cr, uid, ids, context=context)
         return self.pool.get('crm.lead').redirect_opportunity_view(cr, uid, opportunity_dict[ids[0]], context)
@@ -300,4 +283,10 @@ class crm_phonecall(osv.osv):
     def _call_set_partner_send_note(self, cr, uid, ids, context=None):
         return self.message_post(cr, uid, ids, body=_("Partner has been <b>created</b>."), context=context)
 
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:
+class crm_phonecall_category(osv.Model):
+    _name = "crm.phonecall.category"
+    _description = "Category of phonecall"
+    _columns = {
+        'name': fields.char('Name', required=True, translate=True),
+        'team_id': fields.many2one('crm.team', 'Sales Team'),
+    }

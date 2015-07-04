@@ -51,16 +51,12 @@
     journal = self.env['account.journal'].search([('type', '=', 'cash'),
                                                   ('company_id', '=', self.company_id.id)],
                                                   limit=1)
-    invoice.pay_and_reconcile(
-         invoice.amount_total, ref('account.cash'), ref('account.period_8'),
-         journal.id, ref('account.cash'),
-         ref('account.period_8'), journal.id,
-         name='test')
+    invoice.pay_and_reconcile(journal, invoice.amount_total)
 -
   Check the SO after paying the invoice
 -
   !python {model: sale.order, id: sale_prepaid}: |
-     assert self.invoice_exists, 'order not invoiced'
+     assert self.invoice_count != 0, 'order not invoiced'
      assert self.invoiced, 'order is not paid'
      assert len(self.picking_ids) == 1, 'pickings not generated'
 -

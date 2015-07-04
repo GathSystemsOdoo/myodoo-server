@@ -80,6 +80,8 @@ def replace_request_password(args):
 # *broken*
 NO_POSTMORTEM = (openerp.osv.orm.except_orm,
                  openerp.exceptions.AccessError,
+                 openerp.exceptions.ValidationError,
+                 openerp.exceptions.MissingError,
                  openerp.exceptions.AccessDenied,
                  openerp.exceptions.Warning,
                  openerp.exceptions.RedirectWarning)
@@ -288,7 +290,7 @@ class WebRequest(object):
         if self.endpoint.routing['type'] != self._request_type:
             msg = "%s, %s: Function declared as capable of handling request of type '%s' but called with a request of type '%s'"
             params = (self.endpoint.original, self.httprequest.path, self.endpoint.routing['type'], self._request_type)
-            _logger.error(msg, *params)
+            _logger.info(msg, *params)
             raise werkzeug.exceptions.BadRequest(msg % params)
 
         kwargs.update(self.endpoint.arguments)
@@ -498,7 +500,7 @@ class JsonRequest(WebRequest):
             self.jsonrequest = simplejson.loads(request)
         except simplejson.JSONDecodeError:
             msg = 'Invalid JSON data: %r' % (request,)
-            _logger.error('%s: %s', self.httprequest.path, msg)
+            _logger.info('%s: %s', self.httprequest.path, msg)
             raise werkzeug.exceptions.BadRequest(msg)
 
         self.params = dict(self.jsonrequest.get("params", {}))
@@ -536,7 +538,7 @@ class JsonRequest(WebRequest):
         try:
             return super(JsonRequest, self)._handle_exception(exception)
         except Exception:
-            if not isinstance(exception, (openerp.exceptions.Warning, SessionExpiredException)):
+            if not isinstance(exception, (openerp.exceptions.Warning, SessionExpiredException, openerp.exceptions.except_orm)):
                 _logger.exception("Exception during JSON request handling.")
             error = {
                     'code': 200,
@@ -595,15 +597,24 @@ def serialize_exception(e):
         "debug": traceback.format_exc(),
         "message": ustr(e),
         "arguments": to_jsonable(e.args),
+        "exception_type": "internal_error"
     }
-    if isinstance(e, openerp.osv.osv.except_osv):
-        tmp["exception_type"] = "except_osv"
+    if isinstance(e, openerp.exceptions.UserError):
+        tmp["exception_type"] = "user_error"
     elif isinstance(e, openerp.exceptions.Warning):
+        tmp["exception_type"] = "warning"
+    elif isinstance(e, openerp.exceptions.RedirectWarning):
         tmp["exception_type"] = "warning"
     elif isinstance(e, openerp.exceptions.AccessError):
         tmp["exception_type"] = "access_error"
+    elif isinstance(e, openerp.exceptions.MissingError):
+        tmp["exception_type"] = "missing_error"
     elif isinstance(e, openerp.exceptions.AccessDenied):
         tmp["exception_type"] = "access_denied"
+    elif isinstance(e, openerp.exceptions.ValidationError):
+        tmp["exception_type"] = "validation_error"
+    elif isinstance(e, openerp.exceptions.except_orm):
+        tmp["exception_type"] = "except_orm"
     return tmp
 
 def to_jsonable(o):
@@ -1377,6 +1388,17 @@ class Root(object):
         else:
             response = result
 
+        # save to cache if requested and possible
+        if getattr(request, 'cache_save', False) and response.status_code == 200:
+            response.freeze()
+            r = response.response
+            if isinstance(r, list) and len(r) == 1 and isinstance(r[0], str):
+                request.registry.cache[request.cache_save] = {
+                    'content': r[0],
+                    'mimetype': response.headers['Content-Type'],
+                    'time': time.time(),
+                }
+
         if httprequest.session.should_save:
             if httprequest.session.rotate:
                 self.session_store.delete(httprequest.session)
@@ -1602,5 +1624,3 @@ class CommonController(Controller):
 # register main wsgi handler
 root = Root()
 openerp.service.wsgi_server.register_wsgi_handler(root)
-
-# vim:et:ts=4:sw=4:

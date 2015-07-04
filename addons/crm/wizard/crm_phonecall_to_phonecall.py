@@ -1,23 +1,5 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-2010 Tiny SPRL (<http://tiny.be>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from openerp.osv import fields, osv
 from openerp.tools.translate import _
@@ -33,11 +15,9 @@ class crm_phonecall2phonecall(osv.osv_memory):
         'user_id' : fields.many2one('res.users',"Assign To"),
         'contact_name':fields.char('Contact'),
         'phone':fields.char('Phone'),
-        'categ_id': fields.many2one('crm.case.categ', 'Category', \
-                domain="['|',('section_id','=',False),('section_id','=',section_id),\
-                ('object_id.model', '=', 'crm.phonecall')]"), 
+        'categ_id': fields.many2one('crm.phonecall.category', 'Category'), 
         'date': fields.datetime('Date'),
-        'section_id':fields.many2one('crm.case.section','Sales Team'),
+        'team_id':fields.many2one('crm.team','Sales Team', oldname='section_id'),
         'action': fields.selection([('schedule','Schedule a call'), ('log','Log a call')], 'Action', required=True),
         'partner_id' : fields.many2one('res.partner', "Partner"),
         'note':fields.text('Note')
@@ -59,7 +39,7 @@ class crm_phonecall2phonecall(osv.osv_memory):
         for this in self.browse(cr, uid, ids, context=context):
             phocall_ids = phonecall.schedule_another_phonecall(cr, uid, phonecall_ids, this.date, this.name, \
                     this.user_id and this.user_id.id or False, \
-                    this.section_id and this.section_id.id or False, \
+                    this.team_id and this.team_id.id or False, \
                     this.categ_id and this.categ_id.id or False, \
                     action=this.action, context=context)
 
@@ -90,13 +70,10 @@ class crm_phonecall2phonecall(osv.osv_memory):
                 res.update({'user_id': phonecall.user_id and phonecall.user_id.id or False})
             if 'date' in fields:
                 res.update({'date': False})
-            if 'section_id' in fields:
-                res.update({'section_id': phonecall.section_id and phonecall.section_id.id or False})
+            if 'team_id' in fields:
+                res.update({'team_id': phonecall.team_id and phonecall.team_id.id or False})
             if 'categ_id' in fields:
                 res.update({'categ_id': categ_id})
             if 'partner_id' in fields:
                 res.update({'partner_id': phonecall.partner_id and phonecall.partner_id.id or False})
         return res
-
-
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

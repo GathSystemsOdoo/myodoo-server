@@ -1,23 +1,5 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-2009 Tiny SPRL (<http://tiny.be>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 """ Models registries.
 
@@ -177,9 +159,9 @@ class Registry(Mapping):
 
         # load custom models
         ir_model = self['ir.model']
-        cr.execute('select model from ir_model where state=%s', ('manual',))
-        for (model_name,) in cr.fetchall():
-            ir_model.instanciate(cr, SUPERUSER_ID, model_name, {})
+        cr.execute('select model, transient from ir_model where state=%s', ('manual',))
+        for (model_name, transient) in cr.fetchall():
+            ir_model.instanciate(cr, SUPERUSER_ID, model_name, transient, {})
 
         # prepare the setup on all models
         for model in self.models.itervalues():
@@ -201,13 +183,9 @@ class Registry(Mapping):
         This clears the caches associated to methods decorated with
         ``tools.ormcache`` or ``tools.ormcache_multi`` for all the models.
         """
+        self.cache.clear()
         for model in self.models.itervalues():
             model.clear_caches()
-        # Special case for ir_ui_menu which does not use openerp.tools.ormcache.
-        ir_ui_menu = self.models.get('ir.ui.menu')
-        if ir_ui_menu is not None:
-            ir_ui_menu.clear_cache()
-
 
     # Useful only in a multi-process context.
     def reset_any_cache_cleared(self):
@@ -253,6 +231,7 @@ class Registry(Mapping):
     def leave_test_mode(self):
         """ Leave the test mode. """
         assert self.test_cr is not None
+        self.clear_caches()
         self.test_cr.force_close()
         self.test_cr = None
         RegistryManager.leave_test_mode()
@@ -495,5 +474,3 @@ class RegistryManager(object):
             finally:
                 cr.close()
             registry.base_registry_signaling_sequence = r
-
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

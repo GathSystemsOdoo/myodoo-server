@@ -257,7 +257,7 @@ msgid "\n"
 "===================================================================\n"
 "\n"
 "Lets the company customize which Pad installation should be used to link to new\n"
-"pads (by default, http://etherpad.com/).\n"
+"pads (by default, http://ietherpad.com/).\n"
 "    "
 msgstr ""
 
@@ -5789,8 +5789,8 @@ msgid "Components Buyer"
 msgstr ""
 
 #. module: base
-#: field:res.currency,accuracy:0
-msgid "Computational Accuracy"
+#: field:res.currency,decimal_places:0
+msgid "Decimal Places"
 msgstr ""
 
 #. module: base

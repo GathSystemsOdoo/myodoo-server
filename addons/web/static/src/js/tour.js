@@ -1,24 +1,29 @@
-(function () {
-    'use strict';
+odoo.define('web.Tour', function (require) {
+"use strict";
 
+var core = require('web.core');
+
+var _t = core._t;
+var qweb = core.qweb;
+
+// make this work
 // raise an error in test mode if openerp don't exist
-if (typeof openerp === "undefined") {
-    var error = "openerp is undefined"
-                + "\nhref: " + window.location.href
-                + "\nreferrer: " + document.referrer
-                + "\nlocalStorage: " + window.localStorage.getItem("tour");
-    if (typeof $ !== "undefined") {
-        error += '\n\n' + $("body").html();
-    }
-    throw new Error(error);
-}
+// if (typeof openerp === "undefined") {
+//     var error = "openerp is undefined"
+//                 + "\nhref: " + window.location.href
+//                 + "\nreferrer: " + document.referrer
+//                 + "\nlocalStorage: " + window.localStorage.getItem("tour");
+//     if (typeof $ !== "undefined") {
+//         error += '\n\n' + $("body").html();
+//     }
+//     throw new Error(error);
+// }
 
-var website = openerp.website;
 
-// don't rewrite T in test mode
-if (typeof openerp.Tour !== "undefined") {
-    return;
-}
+// // don't rewrite T in test mode
+// if (typeof openerp.Tour !== "undefined") {
+//     return;
+// }
 
 /////////////////////////////////////////////////
 
@@ -29,19 +34,31 @@ if (typeof openerp.Tour !== "undefined") {
  *  :containsRegex()     - set by user ( use: $(el).find(':containsRegex(/(red|blue|yellow)/gi)') )
  */
 $.extend($.expr[':'],{
-    containsExact: function(a,i,m){
-        return $.trim(a.innerHTML.toLowerCase()) === m[3].toLowerCase();
+    containsExact: function(element, index, matches){
+        return $.trim(element.innerHTML.toLowerCase()) === matches[3].toLowerCase();
     },
-    containsExactCase: function(a,i,m){
-        return $.trim(a.innerHTML) === m[3];
+    containsExactCase: function(element, index, matches){
+        return $.trim(element.innerHTML) === matches[3];
     },
     // Note all escaped characters need to be double escaped
     // inside of the containsRegex, so "\(" needs to be "\\("
-    containsRegex: function(a,i,m){
+    containsRegex: function(element, index, matches){
         var regreg =  /^\/((?:\\\/|[^\/])+)\/([mig]{0,3})$/,
-        reg = regreg.exec(m[3]);
-        return reg ? new RegExp(reg[1], reg[2]).test($.trim(a.innerHTML)) : false;
-    }
+        reg = regreg.exec(matches[3]);
+        return reg ? new RegExp(reg[1], reg[2]).test($.trim(element.innerHTML)) : false;
+    },
+    propChecked: function(element, index, matches) {
+        return $(element).prop("checked") === true;
+    },
+    propSelected: function(element, index, matches) {
+        return $(element).prop("selected") === true;
+    },
+    propValue: function(element, index, matches) {
+        return $(element).prop("value") === matches[3];
+    },
+    propValueContains: function(element, index, matches) {
+        return $(element).prop("value") && $(element).prop("value").indexOf(matches[3]) !== -1;
+    },
 });
 $.ajaxSetup({
     beforeSend:function(){
@@ -102,9 +119,8 @@ var Tour = {
         }
         tour.register = true;
 
-        for (var index=0, len=tour.steps.length; index<len; index++) {
+        for (var index=0; index<tour.steps.length; index++) {
             var step = tour.steps[index];
-            step.id = index;
 
             if (!step.waitNot && index > 0 && tour.steps[index-1] &&
                 tour.steps[index-1].popover && tour.steps[index-1].popover.next) {
@@ -113,14 +129,29 @@ var Tour = {
             if (!step.waitFor && index > 0 && tour.steps[index-1].snippet) {
                 step.waitFor = '.oe_overlay_options .oe_options:visible';
             }
-
-
+            
             var snippet = step.element && step.element.match(/#oe_snippets (.*) \.oe_snippet_thumbnail/);
             if (snippet) {
                 step.snippet = snippet[1];
             } else if (step.snippet) {
                 step.element = '#oe_snippets '+step.snippet+' .oe_snippet_thumbnail';
+                tour.steps.splice(index, 0, {
+                    id: index,
+                    waitNot: step.waitNot,
+                    waitFor: step.waitFor,
+                    title: _t("Move your mouse"),
+                    content: _t("Move your mouse here to open the insert block"),
+                    element: '#oe_snippets',
+                    onend: function () {
+                        $("#oe_snippets").addClass("o_open");
+                    }
+                });
+                step.waitNot = null;
+                step.waitFor = null;
+                index++;
             }
+
+            step.id = index;
 
             if (!step.element) {
                 step.element = "body";
@@ -157,7 +188,10 @@ var Tour = {
             Tour.$element.removeData("tour");
             Tour.$element.removeData("tour-step");
             $(".tour-backdrop").remove();
-            $(".popover.tour").remove();
+            if (Tour.$popover.data('bs.popover')) {
+                Tour.$popover.data('bs.popover').$element.popover('destroy');
+            }
+            Tour.$popover.remove();
             Tour.$element = null;
         }
     },
@@ -186,9 +220,11 @@ var Tour = {
 
 
         Tour.$element = $element;
+        Tour.scrollIntoView($element);
         $element.data("tour", state.id);
         $element.data("tour-step", step.id);
         $element.popover({
+            selector: "xxx", // to fix 'data-original-title'
             placement: step.placement || "auto",
             animation: true,
             trigger: "manual",
@@ -202,6 +238,9 @@ var Tour = {
 
 
         var $tip = $element.data("bs.popover").tip();
+
+
+        Tour.$popover = $tip.add($element.data("bs.popover").arrow());
 
 
         // add popover style (orphan, static, backdrop)
@@ -291,7 +330,7 @@ var Tour = {
         Tour._load_template = true;
         if (typeof QWeb2 === "undefined") return $.when();
         var def = $.Deferred();
-        openerp.qweb.add_template('/web/static/src/xml/website.tour.xml', function(err) {
+        qweb.add_template('/web/static/src/xml/website.tour.xml', function(err) {
             if (err) {
                 def.reject(err);
             } else {
@@ -301,10 +340,10 @@ var Tour = {
         return def;
     },
     popoverTitle: function (tour, options) {
-        return typeof QWeb2 !== "undefined" ? openerp.qweb.render('tour.popover_title', options) : options.title;
+        return typeof QWeb2 !== "undefined" ? qweb.render('tour.popover_title', options) : options.title;
     },
     popover: function (options) {
-        return typeof QWeb2 !== "undefined" ? openerp.qweb.render('tour.popover', options) : options.title;
+        return typeof QWeb2 !== "undefined" ? qweb.render('tour.popover', options) : options.title;
     },
     getLang: function () {
         return $("html").attr("lang") ? "/" + $("html").attr("lang").replace(/-/, '_') : "";
@@ -338,19 +377,26 @@ var Tour = {
         }
         console.log(message);
     },
-    error: function (step, message) {
+    logError: function (step, message, all) {
         var state = Tour.getState();
         console.log(state.tour.steps.slice());
-        message += '\n tour: ' + state.id
-            + (step ? '\n step: ' + step.id + ": '" + (step._title || step.title) + "'" : '' )
-            + '\n href: ' + window.location.href
-            + '\n referrer: ' + document.referrer
-            + (step ? '\n element: ' + Boolean(!step.element || ($(step.element).size() && $(step.element).is(":visible") && !$(step.element).is(":hidden"))) : '' )
-            + (step ? '\n waitNot: ' + Boolean(!step.waitNot || !$(step.waitNot).size()) : '' )
-            + (step ? '\n waitFor: ' + Boolean(!step.waitFor || $(step.waitFor).size()) : '' )
-            + "\n localStorage: " + JSON.stringify(localStorage)
-            + '\n\n' + $("body").html();
+        message += '\ntour: ' + state.id
+            + (step ? '\nstep: ' + step.id + ": '" + (step._title || step.title) + "'" : '' )
+            + (all ? '\nhref: ' + window.location.href : '' )
+            + (all ? '\nreferrer: ' + document.referrer : '' )
+            + (step ? '\nelement: ' + ((!step.element || ($(step.element).size() && $(step.element).is(":visible") && !$(step.element).is(":hidden"))) ? 'true ' : 'false') : '' )
+                + (step && step.element ? "   "+JSON.stringify(step.element) : "")
+            + (step ? '\nwaitNot: ' + ((!step.waitNot || !$(step.waitNot).size()) ? 'true ' : 'false') : '' )
+                + (step && step.waitNot ? "   "+JSON.stringify(step.waitNot) : "")
+            + (step ? '\nwaitFor: ' + ((!step.waitFor || $(step.waitFor).size()) ? 'true ' : 'false') : '' )
+                + (step && step.waitFor ? "   "+JSON.stringify(step.waitFor) : "")
+            + (all ? "\nlocalStorage: " + JSON.stringify(localStorage) : '' )
+            + (all ? '\n\n' + $("body").html() : '' );
         Tour.log(message, true);
+    },
+    error: function (step, message) {
+        var state = Tour.getState();
+        Tour.logError(step, "Error: " + message, true);
         Tour.endTour();
     },
     lists: function () {
@@ -399,7 +445,7 @@ var Tour = {
                 return Tour.error(state.step, "Tour '"+state.id+"' undefined");
             }
             Tour.saveState(state.id, state.mode, state.step_id, state.number-1, state.wait+1);
-            Tour.log("Tour '"+state.id+"' wait for running (tour undefined)");
+            //Tour.log("Tour '"+state.id+"' wait for running (tour undefined)");
             setTimeout(Tour.running, Tour.retryRunningDelay);
         }
     },
@@ -413,7 +459,7 @@ var Tour = {
         var state = Tour.getState();
         var time = new Date().getTime();
         var timer;
-        var next = state.tour.steps[state.step.id+1];
+        var next = state.step.next ? Tour.search_step(state.step.next) : state.tour.steps[state.step.id+1];
         var overlaps = state.mode === "test" ? Tour.errorDelay : 0;
 
         window.onbeforeunload = function () {
@@ -428,19 +474,72 @@ var Tour = {
 
             clearTimeout(Tour.timer);
             if (Tour.check(next)) {
+
                 clearTimeout(Tour.currentTimer);
                 // use an other timeout for cke dom loading
                 Tour.saveState(state.id, state.mode, state.step.id, 0);
                 setTimeout(function () {
+                    if (state.step.onend) {
+                        try {
+                            if(Tour._goto(state.step.onend())) {
+                                return;
+                            }
+                        } catch (e) {
+                            console.log(e);
+                        }
+                    }
                     Tour.nextStep(next);
                 }, Tour.defaultDelay);
+                return;
+
             } else if (!overlaps || new Date().getTime() - time < overlaps) {
+
                 Tour.timer = setTimeout(checkNext, Tour.defaultDelay);
+                return;
+
+            } else if(next.onerror) {
+                
+                Tour.logError(next, "Error: Can't reach the next step (call next step onerror)", false);
+                var id = next.onerror();
+                if (id) {
+                    if (Tour._goto(id)) return;
+                    if (id === true) {
+                        Tour.nextStep(next);
+                        return;
+                    }
+                }
+
+            }
+            
+            Tour.error(next, "Can't reach the next step");
+            return;
+
+        }
+        setTimeout(checkNext, 0);
+    },
+    search_step: function (id_or_title) {
+        var state = Tour.getState();
+        if (id_or_title !== undefined) {
+            if (isNaN(id_or_title)) {
+                for (var k=0; k<state.tour.steps.length; k++) {
+                    if (state.tour.steps[k].title === id_or_title || state.tour.steps[k]._title === id_or_title) {
+                        return state.tour.steps[k];
+                    }
+                }
             } else {
-                return Tour.error(next, "Can't reach the next step");
+                return state.tour.steps[id_or_title];
             }
         }
-        checkNext();
+        return undefined;
+    },
+    _goto: function (id_or_title) {
+        var state = Tour.getState();
+        if (!state) return true;
+        if (id_or_title === undefined) return false;
+        var step = Tour.search_step(id_or_title);
+        Tour.saveState(state.id, state.mode, step.id, 0);
+        Tour.nextStep(Tour.getState().step);
+        return true;
     },
     nextStep: function (step) {
         var state = Tour.getState();
@@ -450,39 +549,42 @@ var Tour = {
         }
 
         step = step || state.step;
-        var next = state.tour.steps[step.id+1];
+        var next = state.step.next ? Tour.search_step(state.step.next) : state.tour.steps[step.id+1];
 
-        if (state.mode === "test" && state.number > 3) {
+        if (state.mode === "test" && state.number > 5) {
             return Tour.error(next, "Cycling. Can't reach the next step");
         }
         
         Tour.saveState(state.id, state.mode, step.id, state.number);
 
-        if (step.id !== state.step_id) {
+        if (state.number === 1) {
             Tour.log("Tour '"+state.id+"' Step: '" + (step._title || step.title) + "' (" + (new Date().getTime() - this.time) + "ms)");
         }
 
         Tour.autoTogglePopover(true);
 
+        // onload a step you can fallback to an other step
         if (step.onload) {
-            step.onload();
+            try {
+                if(Tour._goto(step.onload())) {
+                    return;
+                }
+            } catch (e) {
+                console.log(e);
+            }
         }
 
-        if (next) {
+        if (state.mode === "test") {
             setTimeout(function () {
-                if (Tour.getState()) {
+                Tour.autoNextStep(state.tour, step);
+                if (next && Tour.getState()) {
                     Tour.waitNextStep();
                 }
-                if (state.mode === "test") {
-                    setTimeout(function(){
-                        Tour.autoNextStep(state.tour, step);
-                    }, Tour.defaultDelay);
-                }
-            }, next.wait || 0);
-        } else {
-            setTimeout(function(){
-                Tour.autoNextStep(state.tour, step);
-            }, Tour.defaultDelay);
+            }, step.wait || Tour.defaultDelay);
+        } else if (next) {
+            setTimeout(Tour.waitNextStep, next.wait || 0);
+        }
+        if (!next) {
             Tour.endTour();
         }
     },
@@ -515,46 +617,77 @@ var Tour = {
             var $element = $(step.element);
             if (!$element.size()) return;
 
+            var click_event = function(type) {
+                var evt = document.createEvent("MouseEvents");
+                evt.initMouseEvent(type, true, true, window, 0, 0, 0, 0, 0, false, false, false, false, 0, $element[0]);
+                $element[0].dispatchEvent(evt);
+            };
+
             if (step.snippet) {
 
                 Tour.autoDragAndDropSnippet($element);
             
+            } else if (step.keydown) {
+                
+                if (!(step.keydown instanceof Array)) {
+                    step.keydown = [step.keydown];
+                }
+                var keydown = function (list) {
+                    var keyCode = list.shift();
+                    if (keyCode) {
+                        setTimeout(function () {
+                            setTimeout(function () {
+                                $element.trigger({ type: 'keydown', keyCode: keyCode });
+                                if ((keyCode > 47 && keyCode < 58)   || // number keys
+                                    keyCode == 32  || // spacebar
+                                    (keyCode > 64 && keyCode < 91)   || // letter keys
+                                    (keyCode > 95 && keyCode < 112)  || // numpad keys
+                                    (keyCode > 185 && keyCode < 193) || // ;=,-./` (in order)
+                                    (keyCode > 218 && keyCode < 223)) {   // [\]' (in order))
+                                    document.execCommand('insertText', 0, String.fromCharCode(keyCode));
+                                }
+                                $element.trigger({ type: 'keyup', keyCode: keyCode });
+                                keydown(list);
+                            },0);
+                        },25);
+                    }
+                };
+                keydown(step.keydown.slice());
+
             } else if ($element.is(":visible")) {
 
-                $element.trigger($.Event("mouseenter", { srcElement: $element[0] }));
-                $element.trigger($.Event("mousedown", { srcElement: $element[0] }));
-        
-                var evt = document.createEvent("MouseEvents");
-                evt.initMouseEvent("click", true, true, window, 0, 0, 0, 0, 0, false, false, false, false, 0, null);
-                $element[0].dispatchEvent(evt);
+                click_event("mouseover");
+                click_event("mousedown");
+                click_event("mouseup");
+                click_event("click");
+                if ($element.is("input, textarea, select") && !$element.is(":focus")) {
+                    $element.focus();
+                }
 
                 // trigger after for step like: mouseenter, next step click on button display with mouseenter
                 setTimeout(function () {
                     if (!Tour.getState()) return;
-                    $element.trigger($.Event("mouseup", { srcElement: $element[0] }));
-                    $element.trigger($.Event("mouseleave", { srcElement: $element[0] }));
-                }, 1000);
+                    click_event("mouseout");
+                }, self.defaultDelay<<1);
             }
             if (step.sampleText) {
-            
-                $element.trigger($.Event("keydown", { srcElement: $element }));
-                if ($element.is("input") ) {
+                $element.trigger($.Event("keydown", { srcElement: $element[0] }));
+                if ($element.is("input") || $element.is('textarea')) {
                     $element.val(step.sampleText);
                 } if ($element.is("select")) {
-                    $element.find("[value='"+step.sampleText+"'], option:contains('"+step.sampleText+"')").attr("selected", true);
                     $element.val(step.sampleText);
                 } else {
-                    $element.html(step.sampleText);
+                    $element.text(step.sampleText);
                 }
                 setTimeout(function () {
                     if (!Tour.getState()) return;
-                    $element.trigger($.Event("keyup", { srcElement: $element }));
-                    $element.trigger($.Event("change", { srcElement: $element }));
+                    $element.trigger($.Event("keyup", { srcElement: $element[0] }));
+                    $element.trigger($.Event("change", { srcElement: $element[0] }));
                 }, self.defaultDelay<<1);
             
             }
         }
-        Tour.testtimer = setTimeout(autoStep, 100);
+        Tour.testtimer = setTimeout(autoStep, 0);
     },
     autoDragAndDropSnippet: function (selector) {
         var $thumbnail = $(selector).first();
@@ -563,10 +696,20 @@ var Tour = {
         $thumbnail.trigger($.Event("mousemove", { which: 1, pageX: document.body.scrollWidth/2, pageY: document.body.scrollHeight/2 }));
         var $dropZone = $(".oe_drop_zone").first();
         var dropPosition = $dropZone.position();
-        $dropZone.trigger($.Event("mouseup", { which: 1, pageX: dropPosition.left, pageY: dropPosition.top }));
+        $thumbnail.trigger($.Event("mouseup", { which: 1, pageX: dropPosition.left, pageY: dropPosition.top }));
+    },
+    scrollIntoView: function ($element){
+        // if element is not on window (screen) then it scroll down to get popup visible
+        if (!$element.is('body')){
+            var element_top = $element.offset().top;
+            var visible = ((element_top > $(window).scrollTop()) && (element_top < ($(window).scrollTop() + $(window).height())));
+            if (!visible) {
+                $("body, html").animate({scrollTop: $element.offset().top - $(window).height() / 2 }, 800);
+            }
+        }
     }
 };
-openerp.Tour = Tour;
+// openerp.Tour = Tour;
 
 /////////////////////////////////////////////////
 
@@ -576,4 +719,6 @@ $(document).ready(function () {
     };
 });
 
-}());
+return Tour;
+
+});

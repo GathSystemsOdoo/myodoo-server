@@ -1,26 +1,9 @@
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-2010 Tiny SPRL (<http://tiny.be>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from openerp.osv import fields, osv
 from openerp.tools.translate import _
 import openerp.addons.decimal_precision as dp
+from openerp.exceptions import UserError
 
 class sale_advance_payment_inv(osv.osv_memory):
     _name = "sale.advance.payment.inv"
@@ -31,17 +14,13 @@ class sale_advance_payment_inv(osv.osv_memory):
             [('all', 'Invoice the whole sales order'), ('percentage','Percentage'), ('fixed','Fixed price (deposit)'),
                 ('lines', 'Some order lines')],
             'What do you want to invoice?', required=True,
-            help="""Use Invoice the whole sale order to create the final invoice.
-                Use Percentage to invoice a percentage of the total amount.
-                Use Fixed Price to invoice a specific amound in advance.
-                Use Some Order Lines to invoice a selection of the sales order lines."""),
+            help="""Use Invoice the whole sale order to create the final invoice.\nUse Percentage to invoice a percentage of the total amount.\nUse Fixed Price to invoice a specific amount in advance.\nUse Some Order Lines to invoice a selection of the sales order lines."""),
         'qtty': fields.float('Quantity', digits=(16, 2), required=True),
         'product_id': fields.many2one('product.product', 'Advance Product',
             domain=[('type', '=', 'service')],
-            help="""Select a product of type service which is called 'Advance Product'.
-                You may have to create it and set it as a default value on this field."""),
-        'amount': fields.float('Advance Amount', digits_compute= dp.get_precision('Account'),
-            help="The amount to be invoiced in advance."),
+            help="Select a product of type service which is called 'Advance Product'.\nYou may have to create it and set it as a default value on this field."),
+        'amount': fields.float('Advance Amount', digits=0,
+            help="The amount to be invoiced in advance. \nTaxes are not taken into account for advance invoices."),
     }
 
     def _get_advance_product(self, cr, uid, context=None):
@@ -76,34 +55,42 @@ class sale_advance_payment_inv(osv.osv_memory):
         ir_property_obj = self.pool.get('ir.property')
         fiscal_obj = self.pool.get('account.fiscal.position')
         inv_line_obj = self.pool.get('account.invoice.line')
+        invoice_obj = self.pool.get('account.invoice')
         wizard = self.browse(cr, uid, ids[0], context)
         sale_ids = context.get('active_ids', [])
 
         result = []
         for sale in sale_obj.browse(cr, uid, sale_ids, context=context):
-            val = inv_line_obj.product_id_change(cr, uid, [], wizard.product_id.id,
-                    False, partner_id=sale.partner_id.id, fposition_id=sale.fiscal_position.id)
-            res = val['value']
+            new_invoice = invoice_obj.new(cr, uid, {
+                                'invoice_line_ids':[(0, 0, {'product_id': wizard.product_id.id})],
+                                'partner_id': sale.partner_id.id,
+                                'fiscal_position_id': sale.fiscal_position_id.id,
+                                'type': 'out_invoice',
+                            })
+            inv_line = new_invoice.invoice_line_ids[0]
+            inv_line.invoice_id = new_invoice #Little hack to in order to old <-> new api
+            inv_line._onchange_product_id()
+
+            res = inv_line._convert_to_write(inv_line._cache)
 
             # determine and check income account
             if not wizard.product_id.id :
                 prop = ir_property_obj.get(cr, uid,
-                            'property_account_income_categ', 'product.category', context=context)
+                            'property_account_income_categ_id', 'product.category', context=context)
                 prop_id = prop and prop.id or False
-                account_id = fiscal_obj.map_account(cr, uid, sale.fiscal_position or False, prop_id)
+                account_id = fiscal_obj.map_account(cr, uid, sale.fiscal_position_id or False, prop_id)
                 if not account_id:
-                    raise osv.except_osv(_('Configuration Error!'),
+                    raise UserError(
                             _('There is no income account defined as global property.'))
                 res['account_id'] = account_id
             if not res.get('account_id'):
-                raise osv.except_osv(_('Configuration Error!'),
+                raise UserError(
                         _('There is no income account defined for this product: "%s" (id:%d).') % \
                             (wizard.product_id.name, wizard.product_id.id,))
 
             # determine invoice amount
             if wizard.amount <= 0.00:
-                raise osv.except_osv(_('Incorrect Data'),
-                    _('The value of Advance Amount must be positive.'))
+                raise UserError(_('The value of Advance Amount must be positive.'))
             if wizard.advance_payment_method == 'percentage':
                 inv_amount = sale.amount_untaxed * wizard.amount / 100
                 if not res.get('name'):
@@ -119,12 +106,6 @@ class sale_advance_payment_inv(osv.osv_memory):
                         symbol_order = (symbol, inv_amount)
                     res['name'] = self._translate_advance(cr, uid, context=dict(context, lang=sale.partner_id.lang)) % symbol_order
 
-            # determine taxes
-            if res.get('invoice_line_tax_id'):
-                res['invoice_line_tax_id'] = [(6, 0, res.get('invoice_line_tax_id'))]
-            else:
-                res['invoice_line_tax_id'] = False
-
             # create the invoice
             inv_line_values = {
                 'name': res.get('name'),
@@ -135,7 +116,7 @@ class sale_advance_payment_inv(osv.osv_memory):
                 'discount': False,
                 'uos_id': res.get('uos_id', False),
                 'product_id': wizard.product_id.id,
-                'invoice_line_tax_id': res.get('invoice_line_tax_id'),
+                'invoice_line_tax_ids': res.get('invoice_line_tax_ids'),
                 'account_analytic_id': sale.project_id.id or False,
             }
             inv_values = {
@@ -143,14 +124,14 @@ class sale_advance_payment_inv(osv.osv_memory):
                 'origin': sale.name,
                 'type': 'out_invoice',
                 'reference': False,
-                'account_id': sale.partner_id.property_account_receivable.id,
+                'account_id': sale.partner_id.property_account_receivable_id.id,
                 'partner_id': sale.partner_invoice_id.id,
-                'invoice_line': [(0, 0, inv_line_values)],
+                'invoice_line_ids': [(0, 0, inv_line_values)],
                 'currency_id': sale.pricelist_id.currency_id.id,
                 'comment': '',
-                'payment_term': sale.payment_term.id,
-                'fiscal_position': sale.fiscal_position.id or sale.partner_id.property_account_position.id,
-                'section_id': sale.section_id.id,
+                'payment_term_id': sale.payment_term_id.id,
+                'fiscal_position_id': sale.fiscal_position_id.id or sale.partner_id.property_account_position_id.id,
+                'team_id': sale.team_id.id,
             }
             result.append((sale.id, inv_values))
         return result
@@ -159,7 +140,7 @@ class sale_advance_payment_inv(osv.osv_memory):
         inv_obj = self.pool.get('account.invoice')
         sale_obj = self.pool.get('sale.order')
         inv_id = inv_obj.create(cr, uid, inv_values, context=context)
-        inv_obj.button_reset_taxes(cr, uid, [inv_id], context=context)
+        inv_obj.compute_taxes(cr, uid, [inv_id], context=context)
         # add the invoice to the sales order's invoices
         sale_obj.write(cr, uid, sale_id, {'invoice_ids': [(4, inv_id)]}, context=context)
         return inv_id
@@ -181,9 +162,9 @@ class sale_advance_payment_inv(osv.osv_memory):
             # open the list view of sales order lines to invoice
             res = act_window.for_xml_id(cr, uid, 'sale', 'action_order_line_tree2', context)
             res['context'] = {
-                'search_default_uninvoiced': 1,
-                'search_default_order_id': sale_ids and sale_ids[0] or False,
+                'search_default_uninvoiced': 1
             }
+            res['domain'] = [('order_id','=', sale_ids and sale_ids[0] or False)]
             return res
         assert wizard.advance_payment_method in ('fixed', 'percentage')
 
@@ -214,6 +195,3 @@ class sale_advance_payment_inv(osv.osv_memory):
             'context': "{'type': 'out_invoice'}",
             'type': 'ir.actions.act_window',
         }
-
-
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

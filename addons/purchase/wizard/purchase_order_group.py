@@ -1,27 +1,10 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-2010 Tiny SPRL (<http://tiny.be>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 import time
 
 from openerp.osv import fields, osv
 from openerp.tools.translate import _
+from openerp.exceptions import UserError
 
 class purchase_order_group(osv.osv_memory):
     _name = "purchase.order.group"
@@ -41,8 +24,7 @@ class purchase_order_group(osv.osv_memory):
             context={}
         res = super(purchase_order_group, self).fields_view_get(cr, uid, view_id=view_id, view_type=view_type, context=context, toolbar=toolbar,submenu=False)
         if context.get('active_model','') == 'purchase.order' and len(context['active_ids']) < 2:
-            raise osv.except_osv(_('Warning!'),
-            _('Please select multiple order to merge in the list view.'))
+            raise UserError(_('Please select multiple order to merge in the list view.'))
         return res
     def merge_orders(self, cr, uid, ids, context=None):
         """
@@ -77,6 +59,3 @@ class purchase_order_group(osv.osv_memory):
             'type': 'ir.actions.act_window',
             'search_view_id': id['res_id']
         }
-
-
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

@@ -1,23 +1,5 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Business Applications
-#    Copyright (C) 2004-2012 OpenERP S.A. (<http://openerp.com>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 import logging
 
@@ -31,9 +13,6 @@ class sale_configuration(osv.TransientModel):
     _inherit = 'sale.config.settings'
 
     _columns = {
-        'group_invoice_so_lines': fields.boolean('Generate invoices based on the sales order lines',
-            implied_group='sale.group_invoice_so_lines',
-            help="To allow your salesman to make invoices for sales order lines using the menu 'Lines to Invoice'."),
         'timesheet': fields.boolean('Prepare invoices based on timesheets',
             help='For modifying account analytic view to show important data to project manager of services companies.'
                  'You can also view the report of account analytic summary user-wise as well as month wise.\n'
@@ -44,7 +23,6 @@ class sale_configuration(osv.TransientModel):
                  '(650€/day for a developer), the duration (one year support contract).\n'
                  'You will be able to follow the progress of the contract and invoice automatically.\n'
                  '-It installs the account_analytic_analysis module.'),
-        'time_unit': fields.many2one('product.uom', 'The default working time unit for services is'),
         'group_sale_pricelist':fields.boolean("Use pricelists to adapt your price per customers",
             implied_group='product.group_sale_pricelist',
             help="""Allows to manage different prices based on rules per category of customers.
@@ -55,6 +33,9 @@ Example: 10% for retailers, promotion of 5 EUR on this product, etc."""),
         'group_discount_per_so_line': fields.boolean("Allow setting a discount on the sales order lines",
             implied_group='sale.group_discount_per_so_line',
             help="Allows you to apply some discount per sales order line."),
+        'group_display_incoterm':fields.boolean("Display incoterms on the printed sale orders and invoices reports",
+            implied_group='sale.group_display_incoterm',
+            help="The printed reports will display the incoterms for the sale orders and the related invoices"),
         'module_warning': fields.boolean("Allow configuring alerts by customer or products",
             help='Allow to configure notification on products and trigger them when a user wants to sell a given product or a given customer.\n'
                  'Example: Product: this product is deprecated, do not purchase more than 5.\n'
@@ -63,6 +44,9 @@ Example: 10% for retailers, promotion of 5 EUR on this product, etc."""),
             help='This adds the \'Margin\' on sales order.\n'
                  'This gives the profitability by calculating the difference between the Unit Price and Cost Price.\n'
                  '-This installs the module sale_margin.'),
+        'module_sale_layout': fields.boolean("Allow to categorize sale order lines",
+            help='Allows to create categories to structure lines in pdf reports.\n'
+                 '-This installs the module sale_layout.'),
         'module_website_quote': fields.boolean("Allow online quotations and templates",
             help='This adds the online quotation'),
         'module_sale_journal': fields.boolean("Allow batch invoicing of delivery orders through journals",
@@ -83,41 +67,7 @@ Example: 10% for retailers, promotion of 5 EUR on this product, etc."""),
             help="Allows you to specify different delivery and invoice addresses on a sales order."),
     }
 
-    def default_get(self, cr, uid, fields, context=None):
-        ir_model_data = self.pool.get('ir.model.data')
-        res = super(sale_configuration, self).default_get(cr, uid, fields, context)
-        if res.get('module_project'):
-            user = self.pool.get('res.users').browse(cr, uid, uid, context)
-            res['time_unit'] = user.company_id.project_time_mode_id.id
-        else:
-            product = ir_model_data.xmlid_to_object(cr, uid, 'product.product_product_consultant')
-            if product and product.exists():
-                res['time_unit'] = product.uom_id.id
-        res['timesheet'] = res.get('module_account_analytic_analysis')
-        return res
-
-    def _get_default_time_unit(self, cr, uid, context=None):
-        ids = self.pool.get('product.uom').search(cr, uid, [('name', '=', _('Hour'))], context=context)
-        return ids and ids[0] or False
-
-    _defaults = {
-        'time_unit': _get_default_time_unit,
-    }
-
     def set_sale_defaults(self, cr, uid, ids, context=None):
-        ir_model_data = self.pool.get('ir.model.data')
-        wizard = self.browse(cr, uid, ids)[0]
-
-        if wizard.time_unit:
-            product = ir_model_data.xmlid_to_object(cr, uid, 'product.product_product_consultant')
-            if product and product.exists():
-                product.write({'uom_id': wizard.time_unit.id, 'uom_po_id': wizard.time_unit.id})
-            else:
-                _logger.warning("Product with xml_id 'product.product_product_consultant' not found, UoMs not updated!")
-
-        if wizard.module_project and wizard.time_unit:
-            user = self.pool.get('res.users').browse(cr, uid, uid, context)
-            user.company_id.write({'project_time_mode_id': wizard.time_unit.id})
         return {}
 
     def onchange_task_work(self, cr, uid, ids, task_work, context=None):
@@ -135,17 +85,7 @@ Example: 10% for retailers, promotion of 5 EUR on this product, etc."""),
 class account_config_settings(osv.osv_memory):
     _inherit = 'account.config.settings'
     _columns = {
-        'module_sale_analytic_plans': fields.boolean('Use multiple analytic accounts on sales',
-            help="""This allows install module sale_analytic_plans."""),
         'group_analytic_account_for_sales': fields.boolean('Analytic accounting for sales',
             implied_group='sale.group_analytic_accounting',
             help="Allows you to specify an analytic account on sales orders."),
     }
-
-    def onchange_sale_analytic_plans(self, cr, uid, ids, module_sale_analytic_plans, context=None):
-        """ change group_analytic_account_for_sales following module_sale_analytic_plans """
-        if not module_sale_analytic_plans:
-            return {}
-        return {'value': {'group_analytic_account_for_sales': module_sale_analytic_plans}}
-
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

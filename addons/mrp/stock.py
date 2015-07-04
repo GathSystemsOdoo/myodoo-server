@@ -1,23 +1,5 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-2010 Tiny SPRL (<http://tiny.be>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 import time
 
@@ -26,6 +8,7 @@ from openerp.osv import osv
 from openerp.tools.translate import _
 from openerp import SUPERUSER_ID
 from openerp.tools import DEFAULT_SERVER_DATETIME_FORMAT, float_compare
+from openerp.exceptions import UserError
 
 class StockMove(osv.osv):
     _inherit = 'stock.move'
@@ -38,27 +21,8 @@ class StockMove(osv.osv):
 
     def check_tracking(self, cr, uid, move, lot_id, context=None):
         super(StockMove, self).check_tracking(cr, uid, move, lot_id, context=context)
-        if move.product_id.track_production and (move.location_id.usage == 'production' or move.location_dest_id.usage == 'production') and not lot_id:
-            raise osv.except_osv(_('Warning!'), _('You must assign a serial number for the product %s') % (move.product_id.name))
-        if move.raw_material_production_id and move.location_dest_id.usage == 'production' and move.raw_material_production_id.product_id.track_production and not move.consumed_for:
-            raise osv.except_osv(_('Warning!'), _("Because the product %s requires it, you must assign a serial number to your raw material %s to proceed further in your production. Please use the 'Produce' button to do so.") % (move.raw_material_production_id.product_id.name, move.product_id.name))
-
-    # TODO master: remove me, no longer used
-    def _check_phantom_bom(self, cr, uid, move, context=None):
-        """check if product associated to move has a phantom bom
-            return list of ids of mrp.bom for that product """
-        user_company = self.pool.get('res.users').browse(cr, uid, uid, context=context).company_id.id
-        #doing the search as SUPERUSER because a user with the permission to write on a stock move should be able to explode it
-        #without giving him the right to read the boms.
-        domain = [
-            '|', ('product_id', '=', move.product_id.id),
-            '&', ('product_id', '=', False), ('product_tmpl_id.product_variant_ids', '=', move.product_id.id),
-            ('type', '=', 'phantom'),
-            '|', ('date_start', '=', False), ('date_start', '<=', time.strftime(DEFAULT_SERVER_DATETIME_FORMAT)),
-            '|', ('date_stop', '=', False), ('date_stop', '>=', time.strftime(DEFAULT_SERVER_DATETIME_FORMAT)),
-            ('company_id', '=', user_company)]
-        return self.pool.get('mrp.bom').search(cr, SUPERUSER_ID, domain, context=context)
-
+        if move.raw_material_production_id and move.product_id.tracking!='none' and move.location_dest_id.usage == 'production' and move.raw_material_production_id.product_id.tracking != 'none' and not move.consumed_for:
+            raise UserError(_("Because the product %s requires it, you must assign a serial number to your raw material %s to proceed further in your production. Please use the 'Produce' button to do so.") % (move.raw_material_production_id.product_id.name, move.product_id.name))
 
     def _action_explode(self, cr, uid, move, context=None):
         """ Explodes pickings.
@@ -172,7 +136,7 @@ class StockMove(osv.osv):
         production_obj = self.pool.get('mrp.production')
 
         if product_qty <= 0:
-            raise osv.except_osv(_('Warning!'), _('Please provide proper quantity.'))
+            raise UserError(_('Please provide proper quantity.'))
         #because of the action_confirm that can create extra moves in case of phantom bom, we need to make 2 loops
         ids2 = []
         for move in self.browse(cr, uid, ids, context=context):
@@ -186,7 +150,7 @@ class StockMove(osv.osv):
             prod_orders.add(move.raw_material_production_id.id or move.production_id.id)
             move_qty = move.product_qty
             if move_qty <= 0:
-                raise osv.except_osv(_('Error!'), _('Cannot consume a move with negative or zero quantity.'))
+                raise UserError(_('Cannot consume a move with negative or zero quantity.'))
             quantity_rest = move_qty - product_qty
             # Compare with numbers of move uom as we want to avoid a split with 0 qty
             quantity_rest_uom = move.product_uom_qty - self.pool.get("product.uom")._compute_qty_obj(cr, uid, move.product_id.uom_id, product_qty, move.product_uom)
@@ -262,7 +226,7 @@ class stock_warehouse(osv.osv):
             manufacture_route_id = route_obj.search(cr, uid, [('name', 'like', _('Manufacture'))], context=context)
             manufacture_route_id = manufacture_route_id and manufacture_route_id[0] or False
         if not manufacture_route_id:
-            raise osv.except_osv(_('Error!'), _('Can\'t find any generic Manufacture route.'))
+            raise UserError(_('Can\'t find any generic Manufacture route.'))
 
         return {
             'name': self._format_routename(cr, uid, warehouse, _(' Manufacture'), context=context),
@@ -310,7 +274,7 @@ class stock_warehouse(osv.osv):
     def _handle_renaming(self, cr, uid, warehouse, name, code, context=None):
         res = super(stock_warehouse, self)._handle_renaming(cr, uid, warehouse, name, code, context=context)
         pull_obj = self.pool.get('procurement.rule')
-        #change the manufacture pull rule name
+        #change the manufacture procurement rule name
         if warehouse.manufacture_pull_id:
             pull_obj.write(cr, uid, warehouse.manufacture_pull_id.id, {'name': warehouse.manufacture_pull_id.name.replace(warehouse.name, name, 1)}, context=context)
         return res

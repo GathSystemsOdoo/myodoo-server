@@ -94,6 +94,3 @@ class res_users(osv.osv):
         internally
         """
         return default_crypt_context
-
-
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

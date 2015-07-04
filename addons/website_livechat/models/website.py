@@ -1,15 +1,33 @@
-from openerp.osv import osv, fields
+# -*- coding: utf-8 -*-
+from openerp.osv import osv
+from openerp import api, fields, models
+from openerp.http import request
 
-class website(osv.osv):
+class Website(models.Model):
+
     _inherit = "website"
 
-    _columns = {
-        'channel_id': fields.many2one('im_livechat.channel', string="Channel"),
-    }
+    channel_id = fields.Many2one('im_livechat.channel', string='Live Chat Channel')
 
-class website_config_settings(osv.osv_memory):
+
+class WebsiteConfigSettings(models.TransientModel):
+
     _inherit = 'website.config.settings'
 
-    _columns = {
-        'channel_id': fields.related('website_id', 'channel_id', type='many2one', relation='im_livechat.channel', string='Live Chat Channel'),
-    }
+    channel_id = fields.Many2one('im_livechat.channel', string='Live Chat Channel', related='website_id.channel_id')
+
+
+
+class IrUiView(models.Model):
+
+    _inherit = "ir.ui.view"
+
+    @api.model
+    def _prepare_qcontext(self):
+        qcontext = super(IrUiView, self)._prepare_qcontext()
+        if request and getattr(request, 'website_enabled', False):
+            if request.website.channel_id:
+                qcontext['website_livechat_url'] = self.env['ir.config_parameter'].sudo().get_param('web.base.url')
+                qcontext['website_livechat_dbname'] = self._cr.dbname
+                qcontext['website_livechat_channel'] = request.website.channel_id.id
+        return qcontext

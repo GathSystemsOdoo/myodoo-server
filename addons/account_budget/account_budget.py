@@ -1,29 +1,12 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-2010 Tiny SPRL (<http://tiny.be>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from datetime import date, datetime
 
 from openerp.osv import fields, osv
 from openerp.tools import ustr, DEFAULT_SERVER_DATE_FORMAT
 from openerp.tools.translate import _
+from openerp.exceptions import UserError
 
 import openerp.addons.decimal_precision as dp
 
@@ -46,7 +29,7 @@ class account_budget_post(osv.osv):
     _columns = {
         'code': fields.char('Code', size=64, required=True),
         'name': fields.char('Name', required=True),
-        'account_ids': fields.many2many('account.account', 'account_budget_rel', 'budget_id', 'account_id', 'Accounts'),
+        'account_ids': fields.many2many('account.account', 'account_budget_rel', 'budget_id', 'account_id', 'Accounts', domain=[('deprecated', '=', False)]),
         'crossovered_budget_line': fields.one2many('crossovered.budget.lines', 'general_budget_id', 'Budget Lines'),
         'company_id': fields.many2one('res.company', 'Company', required=True),
     }
@@ -118,12 +101,10 @@ class crossovered_budget_lines(osv.osv):
         result = 0.0
         if context is None: 
             context = {}
-        account_obj = self.pool.get('account.account')
         for line in self.browse(cr, uid, ids, context=context):
             acc_ids = [x.id for x in line.general_budget_id.account_ids]
             if not acc_ids:
-                raise osv.except_osv(_('Error!'),_("The Budget '%s' has no accounts!") % ustr(line.general_budget_id.name))
-            acc_ids = account_obj._get_children_and_consol(cr, uid, acc_ids, context=context)
+                raise UserError(_("The Budget '%s' has no accounts!") % ustr(line.general_budget_id.name))
             date_to = line.date_to
             date_from = line.date_from
             if line.analytic_account_id.id:
@@ -195,9 +176,9 @@ class crossovered_budget_lines(osv.osv):
         'date_from': fields.date('Start Date', required=True),
         'date_to': fields.date('End Date', required=True),
         'paid_date': fields.date('Paid Date'),
-        'planned_amount':fields.float('Planned Amount', required=True, digits_compute=dp.get_precision('Account')),
-        'practical_amount':fields.function(_prac, string='Practical Amount', type='float', digits_compute=dp.get_precision('Account')),
-        'theoritical_amount':fields.function(_theo, string='Theoretical Amount', type='float', digits_compute=dp.get_precision('Account')),
+        'planned_amount':fields.float('Planned Amount', required=True, digits=0),
+        'practical_amount':fields.function(_prac, string='Practical Amount', type='float', digits=0),
+        'theoritical_amount':fields.function(_theo, string='Theoretical Amount', type='float', digits=0),
         'percentage':fields.function(_perc, string='Percentage', type='float'),
         'company_id': fields.related('crossovered_budget_id', 'company_id', type='many2one', relation='res.company', string='Company', store=True, readonly=True)
     }
@@ -209,6 +190,3 @@ class account_analytic_account(osv.osv):
     _columns = {
         'crossovered_budget_line': fields.one2many('crossovered.budget.lines', 'analytic_account_id', 'Budget Lines'),
     }
-
-
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

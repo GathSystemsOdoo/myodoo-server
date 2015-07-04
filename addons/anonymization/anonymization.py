@@ -1,24 +1,5 @@
 # -*- encoding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-2009 Tiny SPRL (<http://tiny.be>). All Rights Reserved
-#    $Id$
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License as published by
-#    the Free Software Foundation, either version 3 of the License, or
-#    (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from lxml import etree
 import os
@@ -35,6 +16,7 @@ from openerp.tools.safe_eval import safe_eval as eval
 
 from itertools import groupby
 from operator import itemgetter
+from openerp.exceptions import UserError
 
 
 FIELD_STATES = [('clear', 'Clear'), ('anonymized', 'Anonymized'), ('not_existing', 'Not Existing'), ('new', 'New')]
@@ -87,11 +69,11 @@ class ir_model_fields_anonymization(osv.osv):
         if context.get('manual'):
             global_state = self._get_global_state(cr, uid, context=context)
             if global_state == 'anonymized':
-                raise osv.except_osv('Error!', "The database is currently anonymized, you cannot create, modify or delete fields.")
+                raise UserError(_("The database is currently anonymized, you cannot create, modify or delete fields."))
             elif global_state == 'unstable':
                 msg = _("The database anonymization is currently in an unstable state. Some fields are anonymized," + \
                       " while some fields are not anonymized. You should try to solve this problem before trying to create, write or delete fields.")
-                raise osv.except_osv('Error!', msg)
+                raise UserError(msg)
 
         return True
 
@@ -302,7 +284,7 @@ class ir_model_fields_anonymize_wizard(osv.osv_memory):
 
         return res
 
-    def fields_view_get(self, cr, uid, view_id=None, view_type='form', context=None, *args, **kwargs):
+    def fields_view_get(self, cr, uid, view_id=None, view_type='form', context=None, toolbar=False, submenu=False):
         state = self.pool.get('ir.model.fields.anonymization')._get_global_state(cr, uid, context=context)
 
         if context is None:
@@ -310,7 +292,7 @@ class ir_model_fields_anonymize_wizard(osv.osv_memory):
 
         step = context.get('step', 'new_window')
 
-        res = super(ir_model_fields_anonymize_wizard, self).fields_view_get(cr, uid, view_id, view_type, context, *args, **kwargs)
+        res = super(ir_model_fields_anonymize_wizard, self).fields_view_get(cr, uid, view_id=view_id, view_type=view_type, context=context, toolbar=toolbar, submenu=submenu)
 
         eview = etree.fromstring(res['arch'])
         placeholder = eview.xpath("group[@name='placeholder1']")
@@ -358,7 +340,7 @@ class ir_model_fields_anonymize_wizard(osv.osv_memory):
             else:
                 msg = _("The database anonymization is currently in an unstable state. Some fields are anonymized," + \
                   " while some fields are not anonymized. You should try to solve this problem before trying to do anything else.")
-                raise osv.except_osv('Error!', msg)
+                raise UserError(msg)
 
             res['arch'] = etree.tostring(eview)
 
@@ -369,7 +351,7 @@ class ir_model_fields_anonymize_wizard(osv.osv_memory):
             'state': 'in_exception',
             'msg': error_msg,
         })
-        raise osv.except_osv(error_type, error_msg)
+        raise UserError('%s: %s' % (error_type, error_msg))
 
     def anonymize_database(self, cr, uid, ids, context=None):
         """Sets the 'anonymized' state to defined fields"""
@@ -522,11 +504,11 @@ class ir_model_fields_anonymize_wizard(osv.osv_memory):
         # check that all the defined fields are in the 'anonymized' state
         state = ir_model_fields_anonymization_model._get_global_state(cr, uid, context=context)
         if state == 'clear':
-            raise osv.except_osv_('Error!', "The database is not currently anonymized, you cannot reverse the anonymization.")
+            raise UserError(_("The database is not currently anonymized, you cannot reverse the anonymization."))
         elif state == 'unstable':
             msg = _("The database anonymization is currently in an unstable state. Some fields are anonymized," + \
                   " while some fields are not anonymized. You should try to solve this problem before trying to do anything.")
-            raise osv.except_osv('Error!', msg)
+            raise UserError(msg)
 
         wizards = self.browse(cr, uid, ids, context=context)
         for wizard in wizards:
@@ -633,6 +615,3 @@ class ir_model_fields_anonymization_migration_fix(osv.osv):
         'query_type': fields.selection(string='Query', selection=[('sql', 'sql'), ('python', 'python')]),
         'sequence': fields.integer('Sequence'),
     }
-
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:
-

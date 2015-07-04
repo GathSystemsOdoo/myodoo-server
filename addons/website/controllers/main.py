@@ -34,7 +34,7 @@ class Website(openerp.addons.web.controllers.main.Home):
     def index(self, **kw):
         page = 'homepage'
         try:
-            main_menu = request.registry['ir.model.data'].get_object(request.cr, request.uid, 'website', 'main_menu')
+            main_menu = request.env.ref('website.main_menu')
         except Exception:
             pass
         else:
@@ -46,10 +46,20 @@ class Website(openerp.addons.web.controllers.main.Home):
                     return request.registry['ir.http'].reroute(first_menu.url)
         return self.page(page)
 
+    #------------------------------------------------------
+    # Login - overwrite of the web login so that regular users are redirected to the backend 
+    # while portal users are redirected to the frontend by default
+    #------------------------------------------------------
     @http.route(website=True, auth="public")
-    def web_login(self, *args, **kw):
-        # TODO: can't we just put auth=public, ... in web client ?
-        return super(Website, self).web_login(*args, **kw)
+    def web_login(self, redirect=None, *args, **kw):
+        r = super(Website, self).web_login(redirect=redirect, *args, **kw)
+        if request.params['login_success'] and not redirect:
+            if request.registry['res.users'].has_group(request.cr, request.uid, 'base.group_user'):
+                redirect = '/web?' + request.httprequest.query_string
+            else:
+                redirect = '/'
+            return http.redirect_with_hash(redirect)
+        return r
 
     @http.route('/website/lang/<lang>', type='http', auth="public", website=True, multilang=False)
     def change_lang(self, lang, r='/', **kwargs):
@@ -60,10 +70,11 @@ class Website(openerp.addons.web.controllers.main.Home):
         redirect.set_cookie('website_lang', lang)
         return redirect
 
-    @http.route('/page/<page:page>', type='http', auth="public", website=True)
+    @http.route('/page/<page:page>', type='http', auth="public", website=True, cache=300)
     def page(self, page, **opt):
         values = {
             'path': page,
+            'deletable': True, # used to add 'delete this page' in content menu
         }
         # /page/website.XXX --> /page/XXX
         if page.startswith('website.'):
@@ -76,6 +87,7 @@ class Website(openerp.addons.web.controllers.main.Home):
         except ValueError, e:
             # page not found
             if request.website.is_publisher():
+                values.pop('deletable')
                 page = 'website.page_404'
             else:
                 return request.registry['ir.http']._handle_exception(e, 404)
@@ -173,42 +185,19 @@ class Website(openerp.addons.web.controllers.main.Home):
     def pagenew(self, path, noredirect=False, add_menu=None):
         xml_id = request.registry['website'].new_page(request.cr, request.uid, path, context=request.context)
         if add_menu:
-            model, id  = request.registry["ir.model.data"].get_object_reference(request.cr, request.uid, 'website', 'main_menu')
-            request.registry['website.menu'].create(request.cr, request.uid, {
+            request.registry['website.menu'].create(
+                request.cr, request.uid, {
                     'name': path,
                     'url': "/page/" + xml_id,
-                    'parent_id': id,
+                    'parent_id': request.website.menu_id.id,
+                    'website_id': request.website.id,
                 }, context=request.context)
         # Reverse action in order to allow shortcut for /page/<website_xml_id>
         url = "/page/" + re.sub(r"^website\.", '', xml_id)
 
         if noredirect:
             return werkzeug.wrappers.Response(url, mimetype='text/plain')
-        return werkzeug.utils.redirect(url)
-
-    @http.route('/website/theme_change', type='http', auth="user", website=True)
-    def theme_change(self, theme_id=False, **kwargs):
-        imd = request.registry['ir.model.data']
-        Views = request.registry['ir.ui.view']
-
-        _, theme_template_id = imd.get_object_reference(
-            request.cr, request.uid, 'website', 'theme')
-        views = Views.search(request.cr, request.uid, [
-            ('inherit_id', '=', theme_template_id),
-        ], context=request.context)
-        Views.write(request.cr, request.uid, views, {
-            'active': False,
-        }, context=dict(request.context or {}, active_test=True))
-
-        if theme_id:
-            module, xml_id = theme_id.split('.')
-            _, view_id = imd.get_object_reference(
-                request.cr, request.uid, module, xml_id)
-            Views.write(request.cr, request.uid, [view_id], {
-                'active': True
-            }, context=dict(request.context or {}, active_test=True))
-
-        return request.render('website.themes', {'theme_changed': True})
+        return werkzeug.utils.redirect(url + "?enable_editor=1")
 
     @http.route(['/website/snippets'], type='json', auth="public", website=True)
     def snippets(self):
@@ -236,10 +225,15 @@ class Website(openerp.addons.web.controllers.main.Home):
         return request.redirect(redirect)
 
     @http.route('/website/customize_template_get', type='json', auth='user', website=True)
-    def customize_template_get(self, xml_id, full=False):
+    def customize_template_get(self, key, full=False, bundles=False):
+        """ Get inherit view's informations of the template ``key``. By default, only
+        returns ``customize_show`` templates (which can be active or not), if
+        ``full=True`` returns inherit view's informations of the template ``key``.
+        ``bundles=True`` returns also the asset bundles
+        """
         return request.registry["ir.ui.view"].customize_template_get(
-            request.cr, request.uid, xml_id, full=full, context=request.context)
-
+            request.cr, request.uid, key, full=full, bundles=bundles,
+            context=request.context)
     @http.route('/website/get_view_translations', type='json', auth='public', website=True)
     def get_view_translations(self, xml_id, lang=None):
         lang = lang or request.context.get('lang')
@@ -293,49 +287,55 @@ class Website(openerp.addons.web.controllers.main.Home):
 
     @http.route('/website/attach', type='http', auth='user', methods=['POST'], website=True)
     def attach(self, func, upload=None, url=None, disable_optimization=None):
-        Attachments = request.registry['ir.attachment']
+        # the upload argument doesn't allow us to access the files if more than
+        # one file is uploaded, as upload references the first file
+        # therefore we have to recover the files from the request object
+        Attachments = request.registry['ir.attachment']  # registry for the attachment table
 
-        website_url = message = None
-        if not upload:
-            website_url = url
-            name = url.split("/").pop()
+        uploads = []
+        message = None
+        if not upload: # no image provided, storing the link and the image name
+            uploads.append({'website_url': url})
+            name = url.split("/").pop()                       # recover filename
             attachment_id = Attachments.create(request.cr, request.uid, {
                 'name': name,
                 'type': 'url',
                 'url': url,
                 'res_model': 'ir.ui.view',
             }, request.context)
-        else:
+        else:                                                  # images provided
             try:
-                image_data = upload.read()
-                image = Image.open(cStringIO.StringIO(image_data))
-                w, h = image.size
-                if w*h > 42e6: # Nokia Lumia 1020 photo resolution
-                    raise ValueError(
-                        u"Image size excessive, uploaded images must be smaller "
-                        u"than 42 million pixel")
+                attachment_ids = []
+                for c_file in request.httprequest.files.getlist('upload'):
+                    image_data = c_file.read()
+                    image = Image.open(cStringIO.StringIO(image_data))
+                    w, h = image.size
+                    if w*h > 42e6: # Nokia Lumia 1020 photo resolution
+                        raise ValueError(
+                            u"Image size excessive, uploaded images must be smaller "
+                            u"than 42 million pixel")
 
-                if not disable_optimization and image.format in ('PNG', 'JPEG'):
-                    image_data = image_save_for_web(image)
+                    if not disable_optimization and image.format in ('PNG', 'JPEG'):
+                        image_data = image_save_for_web(image)
 
-                attachment_id = Attachments.create(request.cr, request.uid, {
-                    'name': upload.filename,
-                    'datas': image_data.encode('base64'),
-                    'datas_fname': upload.filename,
-                    'res_model': 'ir.ui.view',
-                }, request.context)
+                    attachment_id = Attachments.create(request.cr, request.uid, {
+                        'name': c_file.filename,
+                        'datas': image_data.encode('base64'),
+                        'datas_fname': c_file.filename,
+                        'res_model': 'ir.ui.view',
+                    }, request.context)
+                    attachment_ids.append(attachment_id)
 
-                [attachment] = Attachments.read(
-                    request.cr, request.uid, [attachment_id], ['website_url'],
+                uploads = Attachments.read(
+                    request.cr, request.uid, attachment_ids, ['website_url'],
                     context=request.context)
-                website_url = attachment['website_url']
             except Exception, e:
                 logger.exception("Failed to upload image to attachment")
                 message = unicode(e)
 
         return """<script type='text/javascript'>
             window.parent['%s'](%s, %s);
-        </script>""" % (func, json.dumps(website_url), json.dumps(message))
+        </script>""" % (func, json.dumps(uploads), json.dumps(message))
 
     @http.route(['/website/publish'], type='json', auth="public", website=True)
     def publish(self, id, object):
@@ -365,6 +365,65 @@ class Website(openerp.addons.web.controllers.main.Home):
         return json.dumps([sugg[0].attrib['data'] for sugg in xmlroot if len(sugg) and sugg[0].attrib['data']])
 
     #------------------------------------------------------
+    # Themes
+    #------------------------------------------------------
+
+    def get_view_ids(self, xml_ids):
+        ids = []
+        imd = request.registry['ir.model.data']
+        for xml_id in xml_ids:
+            if "." in xml_id:
+                xml = xml_id.split(".")
+                view_model, id = imd.get_object_reference(request.cr, request.uid, xml[0], xml[1])
+            else:
+                id = int(xml_id)
+            ids.append(id)
+        return ids
+
+    @http.route(['/website/theme_customize_get'], type='json', auth="public", website=True)
+    def theme_customize_get(self, xml_ids):
+        view = request.registry["ir.ui.view"]
+        enable = []
+        disable = []
+        ids = self.get_view_ids(xml_ids)
+        context = dict(request.context or {}, active_test=True)
+        for v in view.browse(request.cr, request.uid, ids, context=context):
+            if v.active:
+                enable.append(v.xml_id)
+            else:
+                disable.append(v.xml_id)
+        return [enable, disable]
+
+    @http.route(['/website/theme_customize'], type='json', auth="public", website=True)
+    def theme_customize(self, enable, disable):
+        """ enable or Disable lists of ``xml_id`` of the inherit templates
+        """
+        cr, uid, context, pool = request.cr, request.uid, request.context, request.registry
+        view = pool["ir.ui.view"]
+        context = dict(request.context or {}, active_test=True)
+
+        def set_active(ids, active):
+            if ids:
+                view.write(cr, uid, self.get_view_ids(ids), {'active': active}, context=context)
+
+        set_active(disable, False)
+        set_active(enable, True)
+
+        return True
+
+    @http.route(['/website/theme_customize_reload'], type='http', auth="public", website=True)
+    def theme_customize_reload(self, href, enable, disable):
+        self.theme_customize(enable and enable.split(",") or [],disable and disable.split(",") or [])
+        return request.redirect(href + ("&theme=true" if "#" in href else "#theme=true"))
+
+    @http.route(['/website/multi_render'], type='json', auth="public", website=True)
+    def multi_render(self, ids_or_xml_ids, values=None):
+        res = {}
+        for id_or_xml_id in ids_or_xml_ids:
+            res[id_or_xml_id] = request.registry["ir.ui.view"].render(request.cr, request.uid, id_or_xml_id, values=values, engine='ir.qweb', context=request.context)
+        return res
+
+    #------------------------------------------------------
     # Helpers
     #------------------------------------------------------
     @http.route(['/website/kanban'], type='http', auth="public", methods=['POST'], website=True)
@@ -376,10 +435,14 @@ class Website(openerp.addons.web.controllers.main.Home):
 
     @http.route([
         '/website/image',
+        '/website/image/<xmlid>',
+        '/website/image/<xmlid>/<int:max_width>x<int:max_height>',
+        '/website/image/<xmlid>/<field>',
+        '/website/image/<xmlid>/<field>/<int:max_width>x<int:max_height>',
         '/website/image/<model>/<id>/<field>',
         '/website/image/<model>/<id>/<field>/<int:max_width>x<int:max_height>'
         ], auth="public", website=True)
-    def website_image(self, model, id, field, max_width=None, max_height=None):
+    def website_image(self, model=None, id=None, field=None, xmlid=None, max_width=None, max_height=None):
         """ Fetches the requested field and ensures it does not go above
         (max_width, max_height), resizing it if necessary.
 
@@ -393,9 +456,26 @@ class Website(openerp.addons.web.controllers.main.Home):
 
         The requested field is assumed to be base64-encoded image data in
         all cases.
+
+        xmlid can be used to load the image. But the field image must by base64-encoded
         """
+        if xmlid and "." in xmlid:
+            try:
+                record = request.env.ref(xmlid)
+                model, id = record._name, record.id
+            except:
+                raise werkzeug.exceptions.NotFound()
+            if model == 'ir.attachment' and not field:
+                if record.sudo().type == "url":
+                    field = "url"
+                else:
+                    field = "datas"
+
+        if not model or not id or not field:
+            raise werkzeug.exceptions.NotFound()
+
         try:
-            idsha = id.split('_')
+            idsha = str(id).split('_')
             id = idsha[0]
             response = werkzeug.wrappers.Response()
             return request.registry['website']._image(
@@ -446,3 +526,22 @@ class Website(openerp.addons.web.controllers.main.Home):
             return res
         return request.redirect('/')
 
+    #------------------------------------------------------
+    # Backend html field
+    #------------------------------------------------------
+    @http.route('/website/field/html', type='http', auth="public", website=True)
+    def FieldTextHtml(self, model=None, res_id=None, field=None, callback=None, **kwargs):
+        record = None
+        if model and res_id:
+            res_id = int(res_id)
+            record = request.registry[model].browse(request.cr, request.uid, res_id, request.context)
+
+        datarecord = json.loads(kwargs['datarecord'])
+        kwargs.update({
+            'content': record and getattr(record, field) or "",
+            'model': model,
+            'res_id': res_id,
+            'field': field,
+            'datarecord': datarecord
+        })
+        return request.website.render(kwargs.get("template") or "website.FieldTextHtml", kwargs)

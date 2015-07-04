@@ -1,30 +1,10 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-2010 Tiny SPRL (<http://tiny.be>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 import logging
 import os
 import tempfile
 from subprocess import Popen, PIPE
 _logger = logging.getLogger(__name__)
-class NhException(Exception):
-    pass
 
 
 class indexer(object):
@@ -61,13 +41,13 @@ class indexer(object):
         try:
             if content != None:
                 return self._doIndexContent(content)
-        except NhException:
+        except NotImplementedError:
             pass
 
         if realfile != None:
             try:
                 return self._doIndexFile(realfile)
-            except NhException:
+            except NotImplementedError:
                 pass
 
             fp = open(realfile,'rb')
@@ -90,16 +70,16 @@ class indexer(object):
                 res = self._doIndexFile(rfname)
                 os.unlink(rfname)
                 return res
-            except NhException:
+            except NotImplementedError:
                 pass
 
-        raise NhException('No appropriate method to index file.')
+        raise ValueError('No appropriate method to index file.')
 
     def _doIndexContent(self, content):
-        raise NhException("Content cannot be handled here.")
+        raise NotImplementedError("Content cannot be handled here.")
 
     def _doIndexFile(self, fpath):
-        raise NhException("Content cannot be handled here.")
+        raise NotImplementedError("Content cannot be handled here.")
 
     def __repr__(self):
         return "<indexer %s.%s>" %(self.__module__, self.__class__.__name__)
@@ -130,10 +110,9 @@ class contentIndex(object):
             self.exts[ext] = obj
             f = True
 
-        if f:
-            _logger.debug('Register content indexer: %r.', obj)
         if not f:
-            raise Exception("Your indexer should at least support a mimetype or extension.")
+            raise ValueError("Your indexer should at least support a mimetype or extension.")
+        _logger.debug('Register content indexer: %r.', obj)
 
     def doIndex(self, content, filename=None, content_type=None, realfname=None, debug=False):
         fobj = None
@@ -174,7 +153,7 @@ class contentIndex(object):
                 if not mime:
                     mime = mime2
             except Exception:
-                _logger.exception('Cannot determine mime type.')
+                _logger.info('Cannot determine mime type.', exc_info=True)
 
         try:
             if fobj:
@@ -183,8 +162,8 @@ class contentIndex(object):
                 _logger.debug("Have no object, return (%s, None).", mime)
                 res = (mime, '')
         except Exception:
-            _logger.exception("Cannot index file %s (%s).",
-                                    filename, fname or realfname)
+            _logger.info("Cannot index file %s (%s).",
+                                    filename, fname or realfname, exc_info=True)
             res = (mime, '')
 
         # If we created a tmp file, unlink it now
@@ -196,5 +175,3 @@ class contentIndex(object):
         return res
 
 cntIndex = contentIndex()
-
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

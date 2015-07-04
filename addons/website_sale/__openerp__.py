@@ -10,13 +10,17 @@ OpenERP E-Commerce
 
         """,
     'author': 'OpenERP SA',
-    'depends': ['website', 'sale', 'payment'],
+    'depends': ['website', 'sale', 'payment', 'website_portal'],
     'data': [
         'data/data.xml',
+        'data/web_planner_data.xml',
         'views/views.xml',
         'views/templates.xml',
         'views/payment.xml',
         'views/sale_order.xml',
+        'views/snippets.xml',
+        'views/report_shop_saleorder.xml',
+        'res_config_view.xml',
         'security/ir.model.access.csv',
         'security/website_sale.xml',
     ],

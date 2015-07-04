@@ -2,7 +2,7 @@
 
 from .common import KARMA, TestForumCommon
 from ..models.forum import KarmaError
-from openerp.exceptions import Warning, AccessError
+from openerp.exceptions import UserError, AccessError
 from openerp.tools import mute_logger
 
 
@@ -67,7 +67,7 @@ class TestForum(TestForumCommon):
             'parent_id': self.post.id})
 
         # upvote its own post
-        with self.assertRaises(Warning):
+        with self.assertRaises(UserError):
             emp_answer.vote(upvote=True)
 
         # not enough karma
@@ -90,7 +90,7 @@ class TestForum(TestForumCommon):
             'parent_id': self.post.id})
 
         # downvote its own post
-        with self.assertRaises(Warning):
+        with self.assertRaises(UserError):
             emp_answer.vote(upvote=False)
 
         # not enough karma
@@ -105,12 +105,12 @@ class TestForum(TestForumCommon):
 
     def test_comment_crash(self):
         with self.assertRaises(KarmaError):
-            self.post.sudo(self.user_portal).message_post(body='Should crash', type='comment')
+            self.post.sudo(self.user_portal).message_post(body='Should crash', message_type='comment')
 
     def test_comment(self):
-        self.post.sudo(self.user_employee).message_post(body='Test0', type='notification')
+        self.post.sudo(self.user_employee).message_post(body='Test0', message_type='notification')
         self.user_employee.karma = KARMA['com_all']
-        self.post.sudo(self.user_employee).message_post(body='Test1', type='comment')
+        self.post.sudo(self.user_employee).message_post(body='Test1', message_type='comment')
         self.assertEqual(len(self.post.message_ids), 4, 'website_forum: wrong behavior of message_post')
 
     def test_convert_answer_to_comment_crash(self):

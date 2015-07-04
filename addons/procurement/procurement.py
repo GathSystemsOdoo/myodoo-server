@@ -1,23 +1,5 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-2010 Tiny SPRL (<http://tiny.be>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 import time
 from psycopg2 import OperationalError
@@ -27,6 +9,7 @@ from openerp.osv import fields, osv
 import openerp.addons.decimal_precision as dp
 from openerp.tools.translate import _
 import openerp
+from openerp.exceptions import UserError
 
 PROCUREMENT_PRIORITIES = [('0', 'Not urgent'), ('1', 'Normal'), ('2', 'Urgent'), ('3', 'Very Urgent')]
 
@@ -64,7 +47,7 @@ class procurement_group(osv.osv):
         'procurement_ids': fields.one2many('procurement.order', 'group_id', 'Procurements'),
     }
     _defaults = {
-        'name': lambda self, cr, uid, c: self.pool.get('ir.sequence').get(cr, uid, 'procurement.group') or '',
+        'name': lambda self, cr, uid, c: self.pool.get('ir.sequence').next_by_code(cr, uid, 'procurement.group') or '',
         'move_type': lambda self, cr, uid, c: 'direct'
     }
 
@@ -105,7 +88,7 @@ class procurement_order(osv.osv):
     _name = "procurement.order"
     _description = "Procurement"
     _order = 'priority desc, date_planned, id asc'
-    _inherit = ['mail.thread']
+    _inherit = ['mail.thread','ir.needaction_mixin']
     _log_create = False
     _columns = {
         'name': fields.text('Description', required=True),
@@ -145,6 +128,9 @@ class procurement_order(osv.osv):
         'company_id': lambda self, cr, uid, c: self.pool.get('res.company')._company_default_get(cr, uid, 'procurement.order', context=c)
     }
 
+    def _needaction_domain_get(self, cr, uid, context=None):
+        return [('state', '=', 'exception')] 
+        
     def unlink(self, cr, uid, ids, context=None):
         procurements = self.read(cr, uid, ids, ['state'], context=context)
         unlink_ids = []
@@ -152,8 +138,7 @@ class procurement_order(osv.osv):
             if s['state'] == 'cancel':
                 unlink_ids.append(s['id'])
             else:
-                raise osv.except_osv(_('Invalid Action!'),
-                        _('Cannot delete Procurement Order(s) which are in %s state.') % s['state'])
+                raise UserError(_('Cannot delete Procurement Order(s) which are in %s state.') % s['state'])
         return osv.osv.unlink(self, cr, uid, unlink_ids, context=context)
 
     def do_view_procurements(self, cr, uid, ids, context=None):
@@ -344,4 +329,3 @@ class procurement_order(osv.osv):
                     pass
 
         return {}
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

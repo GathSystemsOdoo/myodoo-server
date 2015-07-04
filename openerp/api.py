@@ -1,23 +1,5 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2013-2014 OpenERP (<http://www.openerp.com>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 """ This module provides the elements for managing two different API styles,
     namely the "traditional" and "record" styles.
@@ -892,7 +874,7 @@ class Environment(object):
                     pass
 
         if invalids:
-            raise Warning('Invalid cache for fields\n' + pformat(invalids))
+            raise UserError('Invalid cache for fields\n' + pformat(invalids))
 
     @property
     def recompute(self):
@@ -935,5 +917,5 @@ class Environments(object):
 
 # keep those imports here in order to handle cyclic dependencies correctly
 from openerp import SUPERUSER_ID
-from openerp.exceptions import Warning, AccessError, MissingError
+from openerp.exceptions import UserError, AccessError, MissingError
 from openerp.modules.registry import RegistryManager

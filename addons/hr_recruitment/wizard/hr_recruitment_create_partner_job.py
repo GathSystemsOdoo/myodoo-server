@@ -1,26 +1,8 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-2009 Tiny SPRL (<http://tiny.be>). All Rights Reserved
-#    $Id$
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as published by
-#    the Free Software Foundation, either version 3 of the License, or
-#    (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 from openerp.osv import fields, osv
 from openerp.tools.translate import _
+from openerp.exceptions import UserError
 
 class hr_recruitment_partner_create(osv.osv_memory):
     _name = 'hr.recruitment.partner.create'
@@ -35,8 +17,7 @@ class hr_recruitment_partner_create(osv.osv_memory):
             context = {}
         for case in case_obj.browse(cr, uid, context['active_ids'], context=context):
             if case.partner_id:
-                raise osv.except_osv(_('Error!'),
-                    _('A contact is already defined on this job request.'))
+                raise UserError(_('A contact is already defined on this job request.'))
         pass
 
     def make_order(self, cr, uid, ids, context=None):
@@ -53,7 +34,7 @@ class hr_recruitment_partner_create(osv.osv_memory):
         for case in case_obj.browse(cr, uid, context['active_ids'], context=context):
             partner_id = partner_obj.search(cr, uid, [('name', '=', case.partner_name or case.name)], context=context)
             if partner_id:
-                raise osv.except_osv(_('Error!'),_('A contact is already existing with the same name.'))
+                raise UserError(_('A contact is already existing with the same name.'))
             partner_id = partner_obj.create(cr, uid, {
                 'name': case.partner_name or case.name,
                 'user_id': case.user_id.id,
@@ -77,6 +58,3 @@ class hr_recruitment_partner_create(osv.osv_memory):
             'type': 'ir.actions.act_window',
             'search_view_id': res['res_id']
         }
-
-
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

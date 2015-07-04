@@ -415,7 +415,6 @@ msgid "From"
 msgstr ""
 
 #. module: mass_mailing
-#: view:mail.mail.statistics:mass_mailing.view_mail_mail_statistics_search
 #: view:mail.mass_mailing:mass_mailing.view_mail_mass_mailing_search
 #: view:mail.mass_mailing.campaign:mass_mailing.view_mail_mass_mailing_campaign_search
 #: view:mail.mass_mailing.contact:mass_mailing.view_mail_mass_mailing_contact_search
@@ -719,11 +718,6 @@ msgid "Number of Contacts"
 msgstr ""
 
 #. module: mass_mailing
-#: view:mail.mail.statistics:mass_mailing.view_mail_mail_statistics_search
-msgid "Open Date"
-msgstr ""
-
-#. module: mass_mailing
 #: model:ir.actions.client,name:mass_mailing.action_client_marketing_menu
 msgid "Open Marketing Menu"
 msgstr ""
@@ -735,7 +729,6 @@ msgid "Open with Visual Editor"
 msgstr ""
 
 #. module: mass_mailing
-#: view:mail.mail.statistics:mass_mailing.view_mail_mail_statistics_search
 #: field:mail.mail.statistics,opened:0
 #: view:mail.mass_mailing:mass_mailing.view_mail_mass_mailing_form
 #: view:mail.mass_mailing:mass_mailing.view_mail_mass_mailing_kanban
@@ -790,7 +783,6 @@ msgid "Preview"
 msgstr ""
 
 #. module: mass_mailing
-#: view:mail.mail.statistics:mass_mailing.view_mail_mail_statistics_search
 #: view:mail.mass_mailing:mass_mailing.view_mail_mass_mailing_form
 #: view:mail.mass_mailing.campaign:mass_mailing.view_mail_mass_mailing_campaign_form
 msgid "Received"
@@ -821,7 +813,6 @@ msgid "Related Mailing(s)"
 msgstr ""
 
 #. module: mass_mailing
-#: view:mail.mail.statistics:mass_mailing.view_mail_mail_statistics_search
 #: field:mail.mail.statistics,replied:0
 #: view:mail.mass_mailing:mass_mailing.view_mail_mass_mailing_form
 #: view:mail.mass_mailing:mass_mailing.view_mail_mass_mailing_kanban
@@ -848,11 +839,6 @@ msgstr ""
 #. module: mass_mailing
 #: field:mail.mass_mailing,reply_to:0
 msgid "Reply To"
-msgstr ""
-
-#. module: mass_mailing
-#: view:mail.mail.statistics:mass_mailing.view_mail_mail_statistics_search
-msgid "Reply Date"
 msgstr ""
 
 #. module: mass_mailing

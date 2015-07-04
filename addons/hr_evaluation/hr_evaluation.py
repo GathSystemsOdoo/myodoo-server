@@ -1,23 +1,5 @@
 # -*- encoding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-2009 Tiny SPRL (<http://tiny.be>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
@@ -27,6 +9,7 @@ import time
 from openerp.osv import fields, osv
 from openerp.tools.translate import _
 from openerp.tools import DEFAULT_SERVER_DATETIME_FORMAT as DF
+from openerp.exceptions import UserError
 
 
 class hr_evaluation_plan(osv.Model):
@@ -135,7 +118,7 @@ class hr_employee(osv.Model):
 
 class hr_evaluation(osv.Model):
     _name = "hr_evaluation.evaluation"
-    _inherit = "mail.thread"
+    _inherit = ['mail.thread']
     _description = "Employee Appraisal"
     _columns = {
         'date': fields.date("Appraisal Deadline", required=True, select=True),
@@ -157,7 +140,7 @@ class hr_evaluation(osv.Model):
             ('wait', 'Plan In Progress'),
             ('progress', 'Waiting Appreciation'),
             ('done', 'Done'),
-        ], 'Status', required=True, readonly=True, copy=False),
+        ], 'Status', required=True, readonly=True, track_visibility='onchange', copy=False),
         'date_close': fields.date('Ending Date', select=True),
     }
     _defaults = {
@@ -236,7 +219,7 @@ class hr_evaluation(osv.Model):
             if evaluation.employee_id and evaluation.employee_id.parent_id and evaluation.employee_id.parent_id.user_id:
                 self.message_subscribe_users(cr, uid, [evaluation.id], user_ids=[evaluation.employee_id.parent_id.user_id.id], context=context)
             if len(evaluation.survey_request_ids) != len(request_obj.search(cr, uid, [('evaluation_id', '=', evaluation.id), ('state', 'in', ['done', 'cancel'])], context=context)):
-                raise osv.except_osv(_('Warning!'), _("You cannot change state, because some appraisal forms have not been completed."))
+                raise UserError(_("You cannot change state, because some appraisal forms have not been completed."))
         return True
 
     def button_done(self, cr, uid, ids, context=None):
@@ -270,7 +253,7 @@ class hr_evaluation(osv.Model):
 
 class hr_evaluation_interview(osv.Model):
     _name = 'hr.evaluation.interview'
-    _inherit = 'mail.thread'
+    _inherit = ['mail.thread']
     _rec_name = 'user_to_review_id'
     _description = 'Appraisal Interview'
     _columns = {
@@ -336,7 +319,7 @@ class hr_evaluation_interview(osv.Model):
             flag = False
             wating_id = 0
             if not id.evaluation_id.id:
-                raise osv.except_osv(_('Warning!'), _("You cannot start evaluation without Appraisal."))
+                raise UserError(_("You cannot start evaluation without Appraisal."))
             records = id.evaluation_id.survey_request_ids
             for child in records:
                 if child.state == "draft":

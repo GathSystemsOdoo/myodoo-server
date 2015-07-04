@@ -1,23 +1,5 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-2009 Tiny SPRL (<http://tiny.be>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 import logging
 from operator import attrgetter
 import re
@@ -29,6 +11,7 @@ from openerp.tools import ustr
 from openerp.tools.translate import _
 from openerp import exceptions
 from lxml import etree
+from openerp.exceptions import UserError
 
 _logger = logging.getLogger(__name__)
 
@@ -100,9 +83,7 @@ class res_config_configurable(osv.osv_memory):
         next = self._next_action(cr, uid, context=context)
         _logger.info('next action is %s', next)
         if next:
-            res = next.action_launch(context=context)
-            res['nodestroy'] = False
-            return res
+            return next.action_launch(context=context)
 
         return {
             'type': 'ir.actions.client',
@@ -433,7 +414,7 @@ class res_config_settings(osv.osv_memory, res_config_module_installation_mixin):
     _name = 'res.config.settings'
 
     def copy(self, cr, uid, id, values, context=None):
-        raise osv.except_osv(_("Cannot duplicate configuration!"), "")
+        raise UserError(_("Cannot duplicate configuration!"), "")
 
     def fields_view_get(self, cr, user, view_id=None, view_type='form',
                         context=None, toolbar=False, submenu=False):
@@ -454,11 +435,15 @@ class res_config_settings(osv.osv_memory, res_config_module_installation_mixin):
         ret_val['arch'] = etree.tostring(doc)
         return ret_val
 
-    def onchange_module(self, cr, uid, ids, field_value, module_name, context={}):
+    def onchange_module(self, cr, uid, ids, field_value, module_name, context=None):
         module_pool = self.pool.get('ir.module.module')
         module_ids = module_pool.search(
             cr, uid, [('name', '=', module_name.replace("module_", '')),
             ('state','in', ['to install', 'installed', 'to upgrade'])],
+            context=context)
+        installed_module_ids = module_pool.search(
+            cr, uid, [('name', '=', module_name.replace("module_", '')),
+            ('state', 'in', ['uninstalled'])],
             context=context)
 
         if module_ids and not field_value:
@@ -472,6 +457,18 @@ class res_config_settings(osv.osv_memory, res_config_module_installation_mixin):
                     'message': _('Disabling this option will also uninstall the following modules \n%s') % message,
                 }
             }
+        if installed_module_ids and field_value:
+            dep_ids = module_pool.upstream_dependencies(cr, uid, installed_module_ids, context=context)
+            dep_name = [x['display_name'] for x in module_pool.search_read(
+                cr, uid, ['|', ('id', 'in', installed_module_ids), ('id', 'in', dep_ids), ('application', '=', True)], context=context)]
+            if dep_name:
+                message = '\n'.join(dep_name)
+                return {
+                    'warning': {
+                        'title': _('Warning!'),
+                        'message': _('Enabling this feature you will install following paying application(s) \n%s') % message,
+                    }
+                }
         return {}
 
     def _get_classified_fields(self, cr, uid, context=None):
@@ -703,6 +700,4 @@ class res_config_settings(osv.osv_memory, res_config_module_installation_mixin):
         # 3/ substitute and return the result
         if (action_id):
             return exceptions.RedirectWarning(msg % values, action_id, _('Go to the configuration panel'))
-        return exceptions.Warning(msg % values)
-
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:
+        return exceptions.UserError(msg % values)

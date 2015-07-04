@@ -1,23 +1,5 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-2010 Tiny SPRL (<http://tiny.be>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 {
     'name': 'Point of Sale',
@@ -30,9 +12,9 @@ Quick and Easy sale process
 ===========================
 
 This module allows you to manage your shop sales very easily with a fully web based touchscreen interface.
-It is compatible with all PC tablets and the iPad, offering multiple payment methods. 
+It is compatible with all PC tablets and the iPad, offering multiple payment methods.
 
-Product selection can be done in several ways: 
+Product selection can be done in several ways:
 
 * Using a barcode reader
 * Browsing through categories of products or via a text search.
@@ -47,9 +29,10 @@ Main Features
 * Refund previous sales
     """,
     'author': 'OpenERP SA',
-    'depends': ['sale_stock'],
+    'depends': ['sale_stock', 'barcodes'],
     'data': [
         'data/report_paperformat.xml',
+        'data/default_barcode_patterns.xml',
         'security/point_of_sale_security.xml',
         'security/ir.model.access.csv',
         'wizard/pos_box.xml',
@@ -70,6 +53,7 @@ Main Features
         'account_statement_report.xml',
         'res_users_view.xml',
         'res_partner_view.xml',
+        'res_config_view.xml',
         'views/report_statement.xml',
         'views/report_usersproduct.xml',
         'views/report_receipt.xml',
@@ -77,13 +61,15 @@ Main Features
         'views/report_detailsofsales.xml',
         'views/report_payment.xml',
         'views/report_sessionsummary.xml',
+        'views/report_userlabel.xml',
         'views/point_of_sale.xml',
     ],
     'demo': [
         'point_of_sale_demo.xml',
-        'account_statement_demo.xml',
     ],
     'test': [
+        '../account/test/account_minimal_test.xml',
+        'test/tests_before.xml',
         'test/00_register_open.yml',
         'test/01_order_to_payment.yml',
         'test/02_order_to_invoice.yml',
@@ -96,5 +82,3 @@ Main Features
     'website': 'https://www.odoo.com/page/point-of-sale',
     'auto_install': False,
 }
-
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

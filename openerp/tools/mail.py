@@ -1,23 +1,5 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Business Applications
-#    Copyright (C) 2012-TODAY OpenERP S.A. (<http://openerp.com>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from lxml import etree
 import cgi
@@ -43,18 +25,18 @@ _logger = logging.getLogger(__name__)
 #----------------------------------------------------------
 
 tags_to_kill = ["script", "head", "meta", "title", "link", "style", "frame", "iframe", "base", "object", "embed"]
-tags_to_remove = ['html', 'body', 'font']
+tags_to_remove = ['html', 'body']
 
 # allow new semantic HTML5 tags
 allowed_tags = clean.defs.tags | frozenset('article section header footer hgroup nav aside figure main'.split() + [etree.Comment])
 safe_attrs = clean.defs.safe_attrs | frozenset(
     ['style',
      'data-oe-model', 'data-oe-id', 'data-oe-field', 'data-oe-type', 'data-oe-expression', 'data-oe-translate', 'data-oe-nodeid',
-     'data-snippet-id', 'data-publish', 'data-id', 'data-res_id', 'data-member_id', 'data-view-id'
+     'data-publish', 'data-id', 'data-res_id', 'data-member_id', 'data-view-id'
      ])
 
 
-def html_sanitize(src, silent=True, strict=False, strip_style=False):
+def html_sanitize(src, silent=True, strict=False, strip_style=False, strip_classes=False):
     if not src:
         return src
     src = ustr(src, errors='replace')
@@ -89,9 +71,13 @@ def html_sanitize(src, silent=True, strict=False, strip_style=False):
     if strict:
         if etree.LXML_VERSION >= (3, 1, 0):
             # lxml < 3.1.0 does not allow to specify safe_attrs. We keep all attributes in order to keep "style"
+            if strip_classes:
+                current_safe_attrs = safe_attrs - frozenset(['class'])
+            else:
+                current_safe_attrs = safe_attrs
             kwargs.update({
                 'safe_attrs_only': True,
-                'safe_attrs': safe_attrs,
+                'safe_attrs': current_safe_attrs,
             })
     else:
         kwargs['safe_attrs_only'] = False    # keep oe-data attributes + style

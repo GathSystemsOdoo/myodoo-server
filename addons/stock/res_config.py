@@ -1,23 +1,5 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Business Applications
-#    Copyright (C) 2004-2012 OpenERP S.A. (<http://openerp.com>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from openerp.osv import fields, osv
 from openerp.tools.translate import _
@@ -82,10 +64,10 @@ This installs the module product_expiry."""),
         'group_uom': fields.boolean("Manage different units of measure for products",
             implied_group='product.group_uom',
             help="""Allows you to select and maintain different units of measure for products."""),
-        'group_uos': fields.boolean("Store products in a different unit of measure than the sales order",
+        'group_uos': fields.boolean("Invoice products in a different unit of measure than the sales order",
             implied_group='product.group_uos',
-            help='Allows you to store units of a product, but sell and invoice based on a different unit of measure.\n'
-                 'For instance, you can store pieces of meat that you sell and invoice based on their weight.'),
+            help='Allows you to sell units of a product, but invoice based on a different unit of measure.\n'
+                 'For instance, you can sell pieces of meat that you invoice based on their weight.'),
         'group_stock_packaging': fields.boolean("Allow to define several packaging methods on products",
             implied_group='product.group_stock_packaging',
             help="""Allows you to create and manage your packaging dimensions and types you want to be maintained in your system."""),
@@ -110,6 +92,8 @@ This installs the module product_expiry."""),
             help='\nCreates the dropship route and add more complex tests'
                  '-This installs the module stock_dropshipping.'),
         'module_stock_picking_wave': fields.boolean('Manage picking wave', help='Install the picking wave module which will help you grouping your pickings and processing them in batch'),
+        'module_stock_calendar': fields.boolean('Manage minimum stock rules according to the purchase and delivery calendars',
+            help='This allows you to handle minimum stock rules differently by the possibility to take into account the purchase and delivery calendars \n-This installs the module stock_calendar.'),
     }
 
     def onchange_adv_location(self, cr, uid, ids, group_stock_adv_location, context=None):
@@ -133,5 +117,3 @@ This installs the module product_expiry."""),
     _defaults = {
         'company_id': _default_company,
     }
-
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

@@ -1,36 +1,19 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-2010 Tiny SPRL (<http://tiny.be>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from openerp.osv import osv, fields
 from openerp.tools.translate import _
 from openerp import workflow
+from openerp.exceptions import UserError
 
 class sale_order_line_make_invoice(osv.osv_memory):
     _name = "sale.order.line.make.invoice"
     _description = "Sale OrderLine Make_invoice"
 
     def _prepare_invoice(self, cr, uid, order, lines, context=None):
-        a = order.partner_id.property_account_receivable.id
-        if order.partner_id and order.partner_id.property_payment_term.id:
-            pay_term = order.partner_id.property_payment_term.id
+        a = order.partner_id.property_account_receivable_id.id
+        if order.partner_id and order.partner_id.property_payment_term_id.id:
+            pay_term = order.partner_id.property_payment_term_id.id
         else:
             pay_term = False
         return {
@@ -40,15 +23,15 @@ class sale_order_line_make_invoice(osv.osv_memory):
             'reference': "P%dSO%d" % (order.partner_id.id, order.id),
             'account_id': a,
             'partner_id': order.partner_invoice_id.id,
-            'invoice_line': [(6, 0, lines)],
+            'invoice_line_ids': [(6, 0, lines)],
             'currency_id' : order.pricelist_id.currency_id.id,
             'comment': order.note,
-            'payment_term': pay_term,
-            'fiscal_position': order.fiscal_position.id or order.partner_id.property_account_position.id,
+            'payment_term_id': pay_term,
+            'fiscal_position_id': order.fiscal_position_id.id or order.partner_id.property_account_position_id.id,
             'user_id': order.user_id and order.user_id.id or False,
             'company_id': order.company_id and order.company_id.id or False,
             'date_invoice': fields.date.today(),
-            'section_id': order.section_id.id,
+            'team_id': order.team_id.id,
         }
 
     
@@ -110,7 +93,7 @@ class sale_order_line_make_invoice(osv.osv_memory):
                 workflow.trg_validate(uid, 'sale.order', order.id, 'all_lines', cr)
 
         if not invoices:
-            raise osv.except_osv(_('Warning!'), _('Invoice cannot be created for this Sales Order Line due to one of the following reasons:\n1.The state of this sales order line is either "draft" or "cancel"!\n2.The Sales Order Line is Invoiced!'))
+            raise UserError(_('Invoice cannot be created for this Sales Order Line due to one of the following reasons:\n1.The state of this sales order line is either "draft" or "cancel"!\n2.The Sales Order Line is Invoiced!'))
         if context.get('open_invoices', False):
             return self.open_invoices(cr, uid, ids, res, context=context)
         return {'type': 'ir.actions.act_window_close'}
@@ -134,6 +117,3 @@ class sale_order_line_make_invoice(osv.osv_memory):
             'context': {'type': 'out_invoice'},
             'type': 'ir.actions.act_window',
         }
-
-
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

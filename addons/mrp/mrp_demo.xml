@@ -29,7 +29,7 @@
             <field name="uom_po_id" ref="product.product_uom_hour"/>
             <field name="type">service</field>
             <field name="name">Assembly Service Cost</field>
-            <field name="categ_id" ref="product.product_category_5"/>
+            <field name="categ_id" ref="product.product_category_3"/>
             <field name="image" type="base64" file="mrp/static/img/product_assembly-image.jpg"/>
         </record>
 
@@ -50,8 +50,6 @@
             <field name="costs_cycle">0.05</field>
             <field name="costs_cycle_account_id" ref="account_assembly_cycle"/>
             <field name="costs_journal_id" ref="account.exp"/>
-            <field name="costs_general_account_id" ref="account.a_expense"/>
-            <field name="costs_general_account_id" ref="account.a_expense"/>
             <field name="calendar_id" ref="resource.timesheet_group1"/>
         </record>
 

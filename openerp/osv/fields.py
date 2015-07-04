@@ -1,23 +1,5 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-2009 Tiny SPRL (<http://tiny.be>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 """ Fields:
       - simple
@@ -426,6 +408,15 @@ class float(_column):
 
     def digits_change(self, cr):
         pass
+
+class monetary(_column):
+    _type = 'monetary'
+    _symbol_set = ('%s', lambda x: __builtin__.float(x or 0.0))
+    _symbol_get = lambda self,x: x or 0.0
+
+    def to_field_args(self):
+        raise NotImplementedError("fields.monetary is only supported in the new API, "
+                                  "but you can use widget='monetary' in client-side views")
 
 class date(_column):
     _type = 'date'
@@ -1591,8 +1582,6 @@ class sparse(function):
         """
 
         if self._type == 'many2many':
-            if not value:
-                return []
             assert value[0][0] == 6, 'Unsupported m2m value for sparse field: %s' % value
             return value[0][2]
 
@@ -1803,6 +1792,3 @@ class column_info(object):
         return '%s(%s, %s, %s, %s, %s)' % (
             self.__class__.__name__, self.name, self.column,
             self.parent_model, self.parent_column, self.original_parent)
-
-
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

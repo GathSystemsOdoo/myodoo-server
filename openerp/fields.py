@@ -1,23 +1,5 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2013-2014 OpenERP (<http://www.openerp.com>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 """ High-level objects for fields. """
 
@@ -30,9 +12,10 @@ import logging
 import pytz
 import xmlrpclib
 
-from openerp.tools import float_round, frozendict, html_sanitize, ustr, OrderedSet
+from openerp.tools import float_round, frozendict, html_sanitize, ustr
 from openerp.tools import DEFAULT_SERVER_DATE_FORMAT as DATE_FORMAT
 from openerp.tools import DEFAULT_SERVER_DATETIME_FORMAT as DATETIME_FORMAT
+from openerp.exceptions import UserError
 
 DATE_LENGTH = len(date.today().strftime(DATE_FORMAT))
 DATETIME_LENGTH = len(datetime.now().strftime(DATETIME_FORMAT))
@@ -494,18 +477,16 @@ class Field(object):
 
         # determine the chain of fields, and make sure they are all set up
         recs = env[self.model_name]
-        fields = []
         for name in self.related:
             field = recs._fields[name]
             field.setup(env)
             recs = recs[name]
-            fields.append(field)
 
         self.related_field = field
 
         # check type consistency
         if self.type != field.type:
-            raise Warning("Type of related field %s is inconsistent with %s" % (self, field))
+            raise UserError(_("Type of related field %s is inconsistent with %s") % (self, field))
 
         # determine dependencies, compute, inverse, and search
         self.depends = ('.'.join(self.related),)
@@ -529,9 +510,9 @@ class Field(object):
         if not self.states and self.inherited:
             self.states = field.states
 
-        # special case for required: check if all fields are required
-        if not self.store and not self.required:
-            self.required = all(field.required for field in fields)
+        # special case for inherited required fields
+        if self.inherited and field.required:
+            self.required = True
 
     def _compute_related(self, records):
         """ Compute the related field `self` on `records`. """
@@ -885,7 +866,7 @@ class Field(object):
         """ Determine the value of `self` for `record`. """
         env = record.env
 
-        if self.column and not (self.depends and env.in_draft):
+        if self.column and not (self.depends and env.in_onchange):
             # this is a stored field or an old-style function field
             if self.depends:
                 # this is a stored computed field, check for recomputation
@@ -911,7 +892,7 @@ class Field(object):
 
         elif self.compute:
             # this is either a non-stored computed field, or a stored computed
-            # field in draft mode
+            # field in onchange mode
             if self.recursive:
                 self.compute_value(record)
             else:
@@ -1081,6 +1062,45 @@ class Float(Field):
         value = float(value or 0.0)
         digits = self.digits
         return float_round(value, precision_digits=digits[1]) if digits else value
+
+
+class Monetary(Field):
+    """ The decimal precision and currency symbol are taken from the attribute
+
+    :param currency_field: name of the field holding the currency this monetary
+                           field is expressed in (default: `currency_id`)
+    """
+    type = 'monetary'
+    _slots = {
+        'currency_field': None,
+    }
+
+    def __init__(self, string=None, currency_field=None, **kwargs):
+        super(Monetary, self).__init__(string=string, currency_field=currency_field, **kwargs)
+
+    _column_currency_field = property(attrgetter('currency_field'))
+    _related_currency_field = property(attrgetter('currency_field'))
+    _description_currency_field = property(attrgetter('currency_field'))
+
+    def _setup_regular(self, env):
+        super(Monetary, self)._setup_regular(env)
+        if not self.currency_field:
+            self.currency_field = 'currency_id'
+        assert self.currency_field in env[self.model_name]._fields, \
+            "Field %s with unknown currency_field %r" % (self, self.currency_field)
+
+    def convert_to_write(self, value, target=None, fnames=None):
+        if target is not None:
+            currency = target[self.currency_field]
+            # FIXME @rco-odoo: currency may not be already initialized if it is
+            # a function or related field!
+            if currency:
+                return currency.round(float(value or 0.0))
+            return float(value or 0.0)
+        return value
+
+    def convert_to_cache(self, value, record, validate=True):
+        return self.convert_to_write(value, record)
 
 
 class _String(Field):
@@ -1606,33 +1626,34 @@ class _RelationalMulti(_Relational):
                 return value.with_env(record.env)
         elif isinstance(value, list):
             # value is a list of record ids or commands
-            comodel = record.env[self.comodel_name]
-            ids = OrderedSet(record[self.name].ids)
-            # modify ids with the commands
+            if not record.id:
+                record = record.browse()        # new record has no value
+            result = record[self.name]
+            # modify result with the commands;
+            # beware to not introduce duplicates in result
             for command in value:
                 if isinstance(command, (tuple, list)):
                     if command[0] == 0:
-                        ids.add(comodel.new(command[2]).id)
+                        result += result.new(command[2])
                     elif command[0] == 1:
-                        comodel.browse(command[1]).update(command[2])
-                        ids.add(command[1])
+                        result.browse(command[1]).update(command[2])
+                        result += result.browse(command[1]) - result
                     elif command[0] == 2:
                         # note: the record will be deleted by write()
-                        ids.discard(command[1])
+                        result -= result.browse(command[1])
                     elif command[0] == 3:
-                        ids.discard(command[1])
+                        result -= result.browse(command[1])
                     elif command[0] == 4:
-                        ids.add(command[1])
+                        result += result.browse(command[1]) - result
                     elif command[0] == 5:
-                        ids.clear()
+                        result = result.browse()
                     elif command[0] == 6:
-                        ids = OrderedSet(command[2])
+                        result = result.browse(command[2])
                 elif isinstance(command, dict):
-                    ids.add(comodel.new(command).id)
+                    result += result.new(command)
                 else:
-                    ids.add(command)
-            # return result as a recordset
-            return comodel.browse(list(ids))
+                    result += result.browse(command) - result
+            return result
         elif not value:
             return self.null(record.env)
         raise ValueError("Wrong value for %s: %s" % (self, value))

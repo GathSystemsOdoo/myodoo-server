@@ -40,10 +40,6 @@
             <field name="name">Discount</field>
             <field name="digits">2</field>
         </record>
-        <record forcecreate="True" id="decimal_account" model="decimal.precision">
-            <field name="name">Account</field>
-            <field name="digits">2</field>
-        </record>
         <record forcecreate="True" id="decimal_stock_weight" model="decimal.precision">
             <field name="name">Stock Weight</field>
             <field name="digits">2</field>
@@ -198,7 +194,7 @@ parameter) will see those record just disappear.
             <field name="field">list_price</field>
         </record>
         <record id="standard_price" model="product.price.type">
-            <field name="name">Cost Price</field>
+            <field name="name">Supplier Section on Product or Cost Price</field>
             <field name="field">standard_price</field>
         </record>
 
@@ -241,19 +237,5 @@ parameter) will see those record just disappear.
             <field eval="'product.pricelist,'+str(ref('list0'))" name="value"/>
         </record>
 
-
-        <!--
-        Product
-        -->
-        <record id="product_product_consultant" model="product.product">
-            <field name="list_price">75.0</field>
-            <field name="standard_price">30.0</field>
-            <field name="uom_id" ref="product.product_uom_hour"/>
-            <field name="uom_po_id" ref="product.product_uom_hour"/>
-            <field name="name">Service</field>
-            <field name="categ_id" ref="product.product_category_all"/>
-            <field name="type">service</field>
-            <field name="sale_ok" eval="False"/>
-        </record>
     </data>
 </openerp>

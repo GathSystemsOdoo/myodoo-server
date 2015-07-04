@@ -1,23 +1,5 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-2010 Tiny SPRL (<http://tiny.be>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from openerp import models, fields
 from openerp import tools
@@ -29,9 +11,11 @@ class report_event_registration(models.Model):
     _order = 'event_date desc'
     _auto = False
 
+    create_date = fields.Datetime('Creation Date', readonly=True)
     event_date = fields.Datetime('Event Date', readonly=True)
     event_id = fields.Many2one('event.event', 'Event', required=True)
     draft_state = fields.Integer(' # No of Draft Registrations')
+    cancel_state = fields.Integer(' # No of Cancelled Registrations')
     confirm_state = fields.Integer(' # No of Confirmed Registrations')
     seats_max = fields.Integer('Max Seats')
     nbevent = fields.Integer('Number of Events')
@@ -40,7 +24,6 @@ class report_event_registration(models.Model):
     registration_state = fields.Selection([('draft', 'Draft'), ('confirm', 'Confirmed'), ('done', 'Attended'), ('cancel', 'Cancelled')], 'Registration State', readonly=True, required=True)
     event_state = fields.Selection([('draft', 'Draft'), ('confirm', 'Confirmed'), ('done', 'Done'), ('cancel', 'Cancelled')], 'Event State', readonly=True, required=True)
     user_id = fields.Many2one('res.users', 'Event Responsible', readonly=True)
-    user_id_registration = fields.Many2one('res.users', 'Register', readonly=True)
     name_registration = fields.Char('Participant / Contact Name', readonly=True)
     company_id = fields.Many2one('res.company', 'Company', readonly=True)
 
@@ -54,14 +37,15 @@ class report_event_registration(models.Model):
                 e.id::varchar || '/' || coalesce(r.id::varchar,'') AS id,
                 e.id AS event_id,
                 e.user_id AS user_id,
-                r.user_id AS user_id_registration,
                 r.name AS name_registration,
+                r.create_date AS create_date,
                 e.company_id AS company_id,
                 e.date_begin AS event_date,
                 count(r.id) AS nbevent,
-                sum(r.nb_register) AS nbregistration,
-                CASE WHEN r.state IN ('draft') THEN r.nb_register ELSE 0 END AS draft_state,
-                CASE WHEN r.state IN ('open','done') THEN r.nb_register ELSE 0 END AS confirm_state,
+                count(r.event_id) AS nbregistration,
+                CASE WHEN r.state IN ('draft') THEN count(r.event_id) ELSE 0 END AS draft_state,
+                CASE WHEN r.state IN ('open','done') THEN count(r.event_id) ELSE 0 END AS confirm_state,
+                CASE WHEN r.state IN ('cancel') THEN count(r.event_id) ELSE 0 END AS cancel_state,
                 e.type AS event_type,
                 e.seats_max AS seats_max,
                 e.state AS event_state,
@@ -72,10 +56,8 @@ class report_event_registration(models.Model):
 
             GROUP BY
                 event_id,
-                user_id_registration,
                 r.id,
                 registration_state,
-                r.nb_register,
                 event_type,
                 e.id,
                 e.date_begin,
@@ -86,5 +68,3 @@ class report_event_registration(models.Model):
                 name_registration
         )
         """)
-
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

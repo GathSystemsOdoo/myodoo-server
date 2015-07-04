@@ -1,23 +1,5 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-2009 Tiny SPRL (<http://tiny.be>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 import datetime
 from lxml import etree
@@ -30,6 +12,7 @@ from openerp import tools, api
 from openerp.osv import osv, fields
 from openerp.osv.expression import get_unaccent_wrapper
 from openerp.tools.translate import _
+from openerp.exceptions import UserError
 
 ADDRESS_FORMAT_LAYOUTS = {
     '%(city)s %(state_code)s\n%(zip)s': """
@@ -125,7 +108,7 @@ class res_partner_category(osv.Model):
     def _name_get_fnc(self, field_name, arg):
         return dict(self.name_get())
 
-    _description = 'Partner Tags'
+    _description = 'Partner Categories'
     _name = 'res.partner.category'
     _columns = {
         'name': fields.char('Category Name', required=True, translate=True),
@@ -194,10 +177,6 @@ class res_partner(osv.Model, format_address):
     def _set_image(self, name, value, args):
         return self.write({'image': tools.image_resize_image_big(value)})
 
-    @api.multi
-    def _has_image(self, name, args):
-        return dict((p.id, bool(p.image)) for p in self)
-
     def _commercial_partner_compute(self, cr, uid, ids, name, args, context=None):
         """ Returns the partner that is considered the commercial
         entity of this partner. The commercial entity holds the master data
@@ -239,7 +218,7 @@ class res_partner(osv.Model, format_address):
         'parent_id': fields.many2one('res.partner', 'Related Company', select=True),
         'parent_name': fields.related('parent_id', 'name', type='char', readonly=True, string='Parent name'),
         'child_ids': fields.one2many('res.partner', 'parent_id', 'Contacts', domain=[('active','=',True)]), # force "active_test" domain to bypass _search() override
-        'ref': fields.char('Contact Reference', select=1),
+        'ref': fields.char('Internal Reference', select=1),
         'lang': fields.selection(_lang_get, 'Language',
             help="If the selected language is loaded in the system, all documents related to this contact will be printed in this language. If not, it will be English."),
         'tz': fields.selection(_tz_get,  'Timezone', size=64,
@@ -248,16 +227,16 @@ class res_partner(osv.Model, format_address):
                  "that is otherwise used to pick and render date and time values: your computer's timezone."),
         'tz_offset': fields.function(_get_tz_offset, type='char', size=5, string='Timezone offset', invisible=True),
         'user_id': fields.many2one('res.users', 'Salesperson', help='The internal user that is in charge of communicating with this contact if any.'),
-        'vat': fields.char('TIN', help="Tax Identification Number. Check the box if this contact is subjected to taxes. Used by the some of the legal statements."),
+        'vat': fields.char('TIN', help="Tax Identification Number. Fill it if the company is subjected to taxes. Used by the some of the legal statements."),
         'bank_ids': fields.one2many('res.partner.bank', 'partner_id', 'Banks'),
         'website': fields.char('Website', help="Website of Partner or Company"),
         'comment': fields.text('Notes'),
-        'category_id': fields.many2many('res.partner.category', id1='partner_id', id2='category_id', string='Tags'),
+        'category_id': fields.many2many('res.partner.category', id1='partner_id', id2='category_id', string='Categories'),
         'credit_limit': fields.float(string='Credit Limit'),
-        'ean13': fields.char('EAN13', size=13),
+        'barcode': fields.char('Barcode', oldname='ean13'),
         'active': fields.boolean('Active'),
-        'customer': fields.boolean('Customer', help="Check this box if this contact is a customer."),
-        'supplier': fields.boolean('Supplier', help="Check this box if this contact is a supplier. If it's not checked, purchase people will not see it when encoding a purchase order."),
+        'customer': fields.boolean('Is a Customer', help="Check this box if this contact is a customer."),
+        'supplier': fields.boolean('Is a Supplier', help="Check this box if this contact is a supplier. If it's not checked, purchase people will not see it when encoding a purchase order."),
         'employee': fields.boolean('Employee', help="Check this box if this contact is an Employee."),
         'function': fields.char('Job Position'),
         'type': fields.selection([('default', 'Default'), ('invoice', 'Invoice'),
@@ -296,7 +275,6 @@ class res_partner(osv.Model, format_address):
             help="Small-sized image of this contact. It is automatically "\
                  "resized as a 64x64px image, with aspect ratio preserved. "\
                  "Use this field anywhere a small image is required."),
-        'has_image': fields.function(_has_image, type="boolean"),
         'company_id': fields.many2one('res.company', 'Company', select=1),
         'color': fields.integer('Color Index'),
         'user_ids': fields.one2many('res.users', 'partner_id', 'Users'),
@@ -327,7 +305,7 @@ class res_partner(osv.Model, format_address):
     def fields_view_get(self, cr, user, view_id=None, view_type='form', context=None, toolbar=False, submenu=False):
         if (not view_id) and (view_type=='form') and context and context.get('force_email', False):
             view_id = self.pool['ir.model.data'].get_object_reference(cr, user, 'base', 'view_partner_simple_form')[1]
-        res = super(res_partner,self).fields_view_get(cr, user, view_id, view_type, context, toolbar=toolbar, submenu=submenu)
+        res = super(res_partner,self).fields_view_get(cr, user, view_id=view_id, view_type=view_type, context=context, toolbar=toolbar, submenu=submenu)
         if view_type == 'form':
             res['arch'] = self.fields_view_get_address(cr, user, res['arch'], context=context)
         return res
@@ -398,24 +376,6 @@ class res_partner(osv.Model, format_address):
             state = self.env['res.country.state'].browse(state_id)
             return {'value': {'country_id': state.country_id.id}}
         return {}
-
-    def _check_ean_key(self, cr, uid, ids, context=None):
-        for partner_o in self.pool['res.partner'].read(cr, uid, ids, ['ean13',]):
-            thisean=partner_o['ean13']
-            if thisean and thisean!='':
-                if len(thisean)!=13:
-                    return False
-                sum=0
-                for i in range(12):
-                    if not (i % 2):
-                        sum+=int(thisean[i])
-                    else:
-                        sum+=3*int(thisean[i])
-                if math.ceil(sum/10.0)*10-sum!=int(thisean[12]):
-                    return False
-        return True
-
-#   _constraints = [(_check_ean_key, 'Error: Invalid ean code', ['ean13'])]
 
     def _update_fields_values(self, cr, uid, partner, fields, context=None):
         """ Returns dict of write() values for synchronizing ``fields`` """
@@ -559,7 +519,7 @@ class res_partner(osv.Model, format_address):
                 if partner.user_ids:
                     companies = set(user.company_id for user in partner.user_ids)
                     if len(companies) > 1 or company not in companies:
-                        raise osv.except_osv(_("Warning"),_("You can not change the company as the partner/user has multiple user linked with different companies."))
+                        raise UserError(_("You can not change the company as the partner/user has multiple user linked with different companies."))
 
         result = super(res_partner, self).write(vals)
         for partner in self:
@@ -582,7 +542,7 @@ class res_partner(osv.Model, format_address):
                 'res_model': 'res.partner',
                 'view_mode': 'form',
                 'res_id': partner.commercial_partner_id.id,
-                'target': 'new',
+                'target': 'current',
                 'flags': {'form': {'action_buttons': True}}}
 
     def open_parent(self, cr, uid, ids, context=None):
@@ -639,7 +599,7 @@ class res_partner(osv.Model, format_address):
             context = {}
         name, email = self._parse_partner_name(name, context=context)
         if context.get('force_email') and not email:
-            raise osv.except_osv(_('Warning'), _("Couldn't create contact without email address!"))
+            raise UserError(_("Couldn't create contact without email address!"))
         if not name and email:
             name = email
         rec_id = self.create(cr, uid, {self._rec_name: name or email, 'email': email or False}, context=context)
@@ -678,14 +638,19 @@ class res_partner(osv.Model, format_address):
             query = """SELECT id
                          FROM res_partner
                       {where} ({email} {operator} {percent}
-                           OR {display_name} {operator} {percent})
-                     ORDER BY {display_name}
-                    """.format(where=where_str, operator=operator,
+                           OR {display_name} {operator} {percent}
+                           OR {reference} {operator} {percent})
+                           -- don't panic, trust postgres bitmap
+                     ORDER BY {display_name} {operator} {percent} desc,
+                              {display_name}
+                    """.format(where=where_str,
+                               operator=operator,
                                email=unaccent('email'),
                                display_name=unaccent('display_name'),
+                               reference=unaccent('ref'),
                                percent=unaccent('%s'))
 
-            where_clause_params += [search_name, search_name]
+            where_clause_params += [search_name]*4
             if limit:
                 query += ' limit %s'
                 where_clause_params.append(limit)
@@ -708,7 +673,7 @@ class res_partner(osv.Model, format_address):
         emails = tools.email_split(email)
         if emails:
             email = emails[0]
-        ids = self.search(cr, uid, [('email','ilike',email)], context=context)
+        ids = self.search(cr, uid, [('email','=ilike',email)], context=context)
         if not ids:
             return self.name_create(cr, uid, email, context=context)[0]
         return ids[0]
@@ -813,5 +778,3 @@ class res_partner(osv.Model, format_address):
         elif address.parent_id:
             address_format = '%(company_name)s\n' + address_format
         return address_format % args
-
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

@@ -12,7 +12,7 @@
                         before validation.
                     </p>
                     <group>
-                        <field name="advance_payment_method" class="oe_inline"
+                        <field name="advance_payment_method" class="oe_inline" widget="radio"
                             on_change="onchange_method(advance_payment_method, product_id)"/>
                         <field name="qtty" invisible="1"/>
                         <field name="product_id"
@@ -22,7 +22,7 @@
                         <label for="amount" attrs="{'invisible': [('advance_payment_method', 'not in', ('fixed','percentage'))]}"/>
                         <div attrs="{'invisible': [('advance_payment_method', 'not in', ('fixed','percentage'))]}">
                             <field name="amount"
-                                attrs="{'required': [('advance_payment_method', 'in', ('fixed','percentage'))]}" class="oe_inline"/>
+                                attrs="{'required': [('advance_payment_method', 'in', ('fixed','percentage'))]}" class="oe_inline" widget="monetary"/>
                             <label string="%%"
                                 attrs="{'invisible': [('advance_payment_method', '!=', 'percentage')]}" class="oe_inline"/>
                         </div>

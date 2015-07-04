@@ -1,24 +1,6 @@
 # -*- coding: utf-8 -*-
 
-##############################################################################
-#
-#    OpenERP, Open Source Business Applications
-#    Copyright (C) 2004-2014 OpenERP S.A. (<http://openerp.com>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 from collections import defaultdict
 import logging
 import re
@@ -30,7 +12,8 @@ from openerp import SUPERUSER_ID
 from openerp import models, tools, api
 from openerp.modules.registry import RegistryManager
 from openerp.osv import fields, osv
-from openerp.osv.orm import BaseModel, Model, MAGIC_COLUMNS, except_orm
+from openerp.osv.orm import BaseModel, Model, MAGIC_COLUMNS
+from openerp.exceptions import UserError, AccessError
 from openerp.tools import config
 from openerp.tools.safe_eval import safe_eval as eval
 from openerp.tools.translate import _
@@ -74,27 +57,6 @@ class ir_model(osv.osv):
     _description = "Models"
     _order = 'model'
 
-    def _is_osv_memory(self, cr, uid, ids, field_name, arg, context=None):
-        models = self.browse(cr, uid, ids, context=context)
-        res = dict.fromkeys(ids)
-        for model in models:
-            if model.model in self.pool:
-                res[model.id] = self.pool[model.model].is_transient()
-            else:
-                _logger.error('Missing model %s' % (model.model, ))
-        return res
-
-    def _search_osv_memory(self, cr, uid, model, name, domain, context=None):
-        if not domain:
-            return []
-        __, operator, value = domain[0]
-        if operator not in ['=', '!=']:
-            raise osv.except_osv(_("Invalid Search Criteria"), _('The osv_memory field can only be compared with = and != operator.'))
-        value = bool(value) if operator == '=' else not bool(value)
-        all_model_ids = self.search(cr, uid, [], context=context)
-        is_osv_mem = self._is_osv_memory(cr, uid, all_model_ids, 'osv_memory', arg=None, context=context)
-        return [('id', 'in', [id for id in is_osv_mem if bool(is_osv_mem[id]) == value])]
-
     def _view_ids(self, cr, uid, ids, field_name, arg, context=None):
         models = self.browse(cr, uid, ids)
         res = {}
@@ -120,9 +82,7 @@ class ir_model(osv.osv):
             help="The list of models that extends the current model."),
         'state': fields.selection([('manual','Custom Object'),('base','Base Object')],'Type', readonly=True),
         'access_ids': fields.one2many('ir.model.access', 'model_id', 'Access'),
-        'osv_memory': fields.function(_is_osv_memory, string='Transient Model', type='boolean',
-            fnct_search=_search_osv_memory,
-            help="This field specifies whether the model is transient or not (i.e. if records are automatically deleted from the database or not)"),
+        'transient': fields.boolean(string="Transient Model"),
         'modules': fields.function(_in_modules, type='char', string='In Modules', help='List of modules in which the object is defined or inherited'),
         'view_ids': fields.function(_view_ids, type='one2many', obj='ir.ui.view', string='Views'),
     }
@@ -180,7 +140,7 @@ class ir_model(osv.osv):
         if not context.get(MODULE_UNINSTALL_FLAG):
             for model in self.browse(cr, user, ids, context):
                 if model.state != 'manual':
-                    raise except_orm(_('Error'), _("Model '%s' contains module data and cannot be removed!") % (model.name,))
+                    raise UserError(_("Model '%s' contains module data and cannot be removed!") % (model.name,))
 
         self._drop_table(cr, user, ids, context)
         res = super(ir_model, self).unlink(cr, user, ids, context)
@@ -198,6 +158,12 @@ class ir_model(osv.osv):
         if context:
             context = dict(context)
             context.pop('__last_update', None)
+        if 'model' in vals:
+            raise UserError(_('Field "Model" cannot be modified on models.'))
+        if 'state' in vals:
+            raise UserError(_('Field "Type" cannot be modified on models.'))
+        if 'transient' in vals:
+            raise UserError(_('Field "Transient Model" cannot be modified on models.'))
         # Filter out operations 4 link from field id, because openerp-web
         # always write (4,id,False) even for non dirty items
         if 'field_id' in vals:
@@ -212,7 +178,7 @@ class ir_model(osv.osv):
         res = super(ir_model,self).create(cr, user, vals, context)
         if vals.get('state','base')=='manual':
             # add model in registry
-            self.instanciate(cr, user, vals['model'], context)
+            self.instanciate(cr, user, vals['model'], vals.get('transient', False), context)
             self.pool.setup_models(cr, partial=(not self.pool.ready))
             # update database schema
             model = self.pool[vals['model']]
@@ -226,7 +192,7 @@ class ir_model(osv.osv):
             RegistryManager.signal_registry_change(cr.dbname)
         return res
 
-    def instanciate(self, cr, user, model, context=None):
+    def instanciate(self, cr, user, model, transient, context=None):
         if isinstance(model, unicode):
             model = model.encode('utf-8')
 
@@ -234,6 +200,7 @@ class ir_model(osv.osv):
             _name = model
             _module = False
             _custom = True
+            _transient = bool(transient)
 
         CustomModel._build_model(self.pool, cr)
 
@@ -295,10 +262,9 @@ class ir_model_fields(osv.osv):
         try:
             selection_list = eval(selection)
         except Exception:
-            _logger.warning('Invalid selection list definition for fields.selection', exc_info=True)
-            raise except_orm(_('Error'),
-                    _("The Selection Options expression is not a valid Pythonic expression."
-                      "Please provide an expression in the [('key','Label'), ...] format."))
+            _logger.info('Invalid selection list definition for fields.selection', exc_info=True)
+            raise UserError(_("The Selection Options expression is not a valid Pythonic expression."
+                                "Please provide an expression in the [('key','Label'), ...] format."))
 
         check = True
         if not (isinstance(selection_list, list) and selection_list):
@@ -310,8 +276,7 @@ class ir_model_fields(osv.osv):
                     break
 
         if not check:
-                raise except_orm(_('Error'),
-                    _("The Selection Options expression is must be in the [('key','Label'), ...] format!"))
+                raise UserError(_("The Selection Options expression is must be in the [('key','Label'), ...] format!"))
         return True
 
     def _size_gt_zero_msg(self, cr, user, ids, context=None):
@@ -350,7 +315,7 @@ class ir_model_fields(osv.osv):
             ids = [ids]
         if not context.get(MODULE_UNINSTALL_FLAG) and \
                 any(field.state != 'manual' for field in self.browse(cr, user, ids, context)):
-            raise except_orm(_('Error'), _("This column contains module data and cannot be removed!"))
+            raise UserError(_("This column contains module data and cannot be removed!"))
 
         self._drop_column(cr, user, ids, context)
         res = super(ir_model_fields, self).unlink(cr, user, ids, context)
@@ -373,15 +338,15 @@ class ir_model_fields(osv.osv):
             vals['state'] = 'manual'
         if vals.get('ttype', False) == 'selection':
             if not vals.get('selection',False):
-                raise except_orm(_('Error'), _('For selection fields, the Selection Options must be given!'))
+                raise UserError(_('For selection fields, the Selection Options must be given!'))
             self._check_selection(cr, user, vals['selection'], context=context)
         res = super(ir_model_fields,self).create(cr, user, vals, context)
         if vals.get('state','base') == 'manual':
             if not vals['name'].startswith('x_'):
-                raise except_orm(_('Error'), _("Custom fields must have a name that starts with 'x_' !"))
+                raise UserError(_("Custom fields must have a name that starts with 'x_' !"))
 
             if vals.get('relation',False) and not self.pool['ir.model'].search(cr, user, [('model','=',vals['relation'])]):
-                raise except_orm(_('Error'), _("Model %s does not exist!") % vals['relation'])
+                raise UserError(_("Model %s does not exist!") % vals['relation'])
 
             self.pool.clear_manual_fields()
 
@@ -416,9 +381,9 @@ class ir_model_fields(osv.osv):
         if 'serialization_field_id' in vals or 'name' in vals:
             for field in self.browse(cr, user, ids, context=context):
                 if 'serialization_field_id' in vals and field.serialization_field_id.id != vals['serialization_field_id']:
-                    raise except_orm(_('Error!'),  _('Changing the storing system for field "%s" is not allowed.')%field.name)
+                    raise UserError(_('Changing the storing system for field "%s" is not allowed.') % field.name)
                 if field.serialization_field_id and (field.name != vals['name']):
-                    raise except_orm(_('Error!'),  _('Renaming sparse field "%s" is not allowed')%field.name)
+                    raise UserError(_('Renaming sparse field "%s" is not allowed') % field.name)
 
         # if set, *one* column can be renamed here
         column_rename = None
@@ -447,10 +412,9 @@ class ir_model_fields(osv.osv):
                 field = getattr(obj, '_fields', {}).get(item.name)
 
                 if item.state != 'manual':
-                    raise except_orm(_('Error!'),
-                        _('Properties of base fields cannot be altered in this manner! '
-                          'Please modify them through Python code, '
-                          'preferably through a custom addon!'))
+                    raise UserError(_('Properties of base fields cannot be altered in this manner! '
+                                        'Please modify them through Python code, '
+                                        'preferably through a custom addon!'))
 
                 if item.ttype == 'selection' and 'selection' in vals \
                         and not checked_selection:
@@ -461,22 +425,21 @@ class ir_model_fields(osv.osv):
                 if 'name' in vals and vals['name'] != item.name:
                     # We need to rename the column
                     if column_rename:
-                        raise except_orm(_('Error!'), _('Can only rename one column at a time!'))
+                        raise UserError(_('Can only rename one column at a time!'))
                     if vals['name'] in obj._columns:
-                        raise except_orm(_('Error!'), _('Cannot rename column to %s, because that column already exists!') % vals['name'])
+                        raise UserError(_('Cannot rename column to %s, because that column already exists!') % vals['name'])
                     if vals.get('state', 'base') == 'manual' and not vals['name'].startswith('x_'):
-                        raise except_orm(_('Error!'), _('New column name must still start with x_ , because it is a custom field!'))
+                        raise UserError(_('New column name must still start with x_ , because it is a custom field!'))
                     if '\'' in vals['name'] or '"' in vals['name'] or ';' in vals['name']:
                         raise ValueError('Invalid character in column name')
                     column_rename = (obj, (obj._table, item.name, vals['name']))
                     final_name = vals['name']
 
                 if 'model_id' in vals and vals['model_id'] != item.model_id.id:
-                    raise except_orm(_("Error!"), _("Changing the model of a field is forbidden!"))
+                    raise UserError(_("Changing the model of a field is forbidden!"))
 
                 if 'ttype' in vals and vals['ttype'] != item.ttype:
-                    raise except_orm(_("Error!"), _("Changing the type of a column is not yet supported. "
-                                "Please drop it and create it again!"))
+                    raise UserError(_("Changing the type of a column is not yet supported. " "Please drop it and create it again!"))
 
                 # We don't check the 'state', because it might come from the context
                 # (thus be set for multiple fields) and will be ignored anyway.
@@ -541,6 +504,7 @@ class ir_model_constraint(Model):
     _columns = {
         'name': fields.char('Constraint', required=True, select=1,
             help="PostgreSQL constraint or foreign key name."),
+        'definition': fields.char('Definition', help="PostgreSQL constraint definition"),
         'model': fields.many2one('ir.model', string='Model',
             required=True, select=1),
         'module': fields.many2one('ir.module.module', string='Module',
@@ -563,7 +527,7 @@ class ir_model_constraint(Model):
         """ 
 
         if uid != SUPERUSER_ID and not self.pool['ir.model.access'].check_groups(cr, uid, "base.group_system"):
-            raise except_orm(_('Permission Denied'), (_('Administrator access is required to uninstall a module')))
+            raise AccessError(_('Administrator access is required to uninstall a module'))
 
         context = dict(context or {})
 
@@ -624,7 +588,7 @@ class ir_model_relation(Model):
         """ 
 
         if uid != SUPERUSER_ID and not self.pool['ir.model.access'].check_groups(cr, uid, "base.group_system"):
-            raise except_orm(_('Permission Denied'), (_('Administrator access is required to uninstall a module')))
+            raise AccessError(_('Administrator access is required to uninstall a module'))
 
         ids_set = set(ids)
         to_drop_table = []
@@ -735,7 +699,7 @@ class ir_model_access(osv.osv):
     # But as the method raises an exception in that case,  the key 'lang' might
     # not be really necessary as a cache key, unless the `ormcache_context`
     # decorator catches the exception (it does not at the moment.)
-    @tools.ormcache_context(accepted_keys=('lang',))
+    @tools.ormcache_context('uid', 'model', 'mode', 'raise_exception', keys=('lang',))
     def check(self, cr, uid, model, mode='read', raise_exception=True, context=None):
         if uid==1:
             # User root have all accesses
@@ -795,7 +759,7 @@ class ir_model_access(osv.osv):
             else:
                 msg_tail = _("Please contact your system administrator if you think this is an error.") + "\n\n(" + _("Document model") + ": %s)"
                 msg_params = (model_name,)
-            _logger.warning('Access Denied by ACLs for operation: %s, uid: %s, model: %s', mode, uid, model_name)
+            _logger.info('Access Denied by ACLs for operation: %s, uid: %s, model: %s', mode, uid, model_name)
             msg = '%s %s' % (msg_heads[mode], msg_tail)
             raise openerp.exceptions.AccessError(msg % msg_params)
         return bool(r)
@@ -915,7 +879,7 @@ class ir_model_data(osv.osv):
             cr.execute('CREATE INDEX ir_model_data_module_name_index ON ir_model_data (module, name)')
 
     # NEW V8 API
-    @tools.ormcache(skiparg=3)
+    @tools.ormcache('xmlid')
     def xmlid_lookup(self, cr, uid, xmlid):
         """Low level xmlid lookup
         Return (id, res_model, res_id) or raise ValueError if not found
@@ -976,7 +940,7 @@ class ir_model_data(osv.osv):
         if check_right:
             return model, res_id
         if raise_on_access_error:
-            raise ValueError('Not enough access rights on the external ID: %s.%s' % (module, xml_id))
+            raise AccessError('Not enough access rights on the external ID: %s.%s' % (module, xml_id))
         return model, False
 
     def get_object(self, cr, uid, module, xml_id, context=None):
@@ -1143,7 +1107,7 @@ class ir_model_data(osv.osv):
         ids = self.search(cr, uid, [('module', 'in', modules_to_remove)])
 
         if uid != 1 and not self.pool['ir.model.access'].check_groups(cr, uid, "base.group_system"):
-            raise except_orm(_('Permission Denied'), (_('Administrator access is required to uninstall a module')))
+            raise AccessError(_('Administrator access is required to uninstall a module'))
 
         context = dict(context or {})
         context[MODULE_UNINSTALL_FLAG] = True # enable model/field deletion
@@ -1285,5 +1249,3 @@ class wizard_model_menu(osv.osv_memory):
                 'icon': 'STOCK_INDENT'
             }, context)
         return {'type':'ir.actions.act_window_close'}
-
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

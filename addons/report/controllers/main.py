@@ -1,27 +1,8 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2014-Today OpenERP SA (<http://www.openerp.com>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from openerp.addons.web.http import Controller, route, request
-from openerp.addons.web.controllers.main import _serialize_exception
-from openerp.osv import osv
+from openerp.addons.web.controllers.main import _serialize_exception, content_disposition
 from openerp.tools import html_escape
 
 import simplejson
@@ -124,7 +105,10 @@ class ReportController(Controller):
                     data = url_decode(url.split('?')[1]).items()  # decoding the args represented in JSON
                     response = self.report_routes(reportname, converter='pdf', **dict(data))
 
-                response.headers.add('Content-Disposition', 'attachment; filename=%s.pdf;' % reportname)
+                cr, uid = request.cr, request.uid
+                report = request.registry['report']._get_report_from_name(cr, uid, reportname)
+                filename = "%s.%s" % (report.name, "pdf")
+                response.headers.add('Content-Disposition', content_disposition(filename))
                 response.set_cookie('fileToken', token)
                 return response
             elif type =='controller':

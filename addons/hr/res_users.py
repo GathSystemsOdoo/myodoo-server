@@ -4,13 +4,15 @@ from openerp.osv import fields, osv
 
 class res_users(osv.Model):
     """ Update of res.users class
-        - if adding groups to an user, check if base.group_user is in it
-        (member of 'Employee'), create an employee form linked to it.
-    """
+
+     - add field for the related employee of the user
+     - if adding groups to an user, check if base.group_user is in it (member of
+       'Employee'), create an employee form linked to it. """
     _name = 'res.users'
     _inherit = ['res.users']
 
     _columns = {
+        'employee_ids': fields.one2many('hr.employee', 'user_id', 'Related employees'),
         'display_employees_suggestions': fields.boolean("Display Employees Suggestions"),
     }
 
@@ -39,10 +41,6 @@ class res_users(osv.Model):
             context = {}
         self.write(cr, uid, user_id, {"display_employees_suggestions": False}, context)
 
-    def _create_welcome_message(self, cr, uid, user, context=None):
-        """Do not welcome new users anymore, welcome new employees instead"""
-        return True
-
     def _message_post_get_eid(self, cr, uid, thread_id, context=None):
         assert thread_id, "res.users does not support posting global messages"
         if context and 'thread_model' in context:
@@ -57,7 +55,7 @@ class res_users(osv.Model):
         """ Redirect the posting of message on res.users to the related employee.
             This is done because when giving the context of Chatter on the
             various mailboxes, we do not have access to the current partner_id. """
-        if kwargs.get('type') == 'email':
+        if kwargs.get('message_type') == 'email':
             return super(res_users, self).message_post(cr, uid, thread_id, context=context, **kwargs)
         res = None
         employee_ids = self._message_post_get_eid(cr, uid, thread_id, context=context)

@@ -1,23 +1,5 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-2010 Tiny SPRL (<http://tiny.be>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from lxml import etree
 
@@ -34,7 +16,7 @@ class project_task_delegate(osv.osv_memory):
         'prefix': fields.char('Your Task Title', help="Title for your validation task"),
         'project_id': fields.many2one('project.project', 'Project', help="User you want to delegate this task to"),
         'user_id': fields.many2one('res.users', 'Assign To', required=True, help="User you want to delegate this task to"),
-        'new_task_description': fields.text('New Task Description', help="Reinclude the description of the task in the task of the user"),
+        'new_task_description': fields.html('New Task Description', help="Reinclude the description of the task in the task of the user"),
         'planned_hours': fields.float('Planned Hours',  help="Estimated time to close this task by the delegated user"),
         'planned_hours_me': fields.float('Hours to Validate', help="Estimated time for you to validate the work done by the user to whom you delegate this task"),
         'state': fields.selection([('pending','Pending'), ('done','Done'), ], 'Validation State', help="New state of your own task. Pending will be reopened automatically when the delegated task is closed")
@@ -91,7 +73,7 @@ class project_task_delegate(osv.osv_memory):
     }
 
     def fields_view_get(self, cr, uid, view_id=None, view_type='form', context=None, toolbar=False, submenu=False):
-        res = super(project_task_delegate, self).fields_view_get(cr, uid, view_id, view_type, context, toolbar, submenu=submenu)
+        res = super(project_task_delegate, self).fields_view_get(cr, uid, view_id=view_id, view_type=view_type, context=context, toolbar=toolbar, submenu=submenu)
         users_pool = self.pool.get('res.users')
         obj_tm = users_pool.browse(cr, uid, uid, context=context).company_id.project_time_mode_id
         tm = obj_tm and obj_tm.name or 'Hours'
@@ -131,6 +113,3 @@ class project_task_delegate(osv.osv_memory):
         action['views'] = [(task_view_form_id, 'form'), (task_view_tree_id, 'tree')]
         action['help'] = False    
         return action
-
-
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

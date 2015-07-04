@@ -1,24 +1,5 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-2010 Tiny SPRL (<http://tiny.be>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 from datetime import datetime, timedelta
 from openerp.tools import DEFAULT_SERVER_DATE_FORMAT, DEFAULT_SERVER_DATETIME_FORMAT, DATETIME_FORMATS_MAP, float_compare
 from openerp.osv import fields, osv
@@ -26,6 +7,7 @@ from openerp.tools.safe_eval import safe_eval as eval
 from openerp.tools.translate import _
 import pytz
 from openerp import SUPERUSER_ID
+from openerp.exceptions import UserError
 
 class sale_order(osv.osv):
     _inherit = "sale.order"
@@ -63,11 +45,15 @@ class sale_order(osv.osv):
 
     def _get_picking_ids(self, cr, uid, ids, name, args, context=None):
         res = {}
+        StockPicking = self.pool.get('stock.picking')
         for sale in self.browse(cr, uid, ids, context=context):
-            if not sale.procurement_group_id:
-                res[sale.id] = []
-                continue
-            res[sale.id] = self.pool.get('stock.picking').search(cr, uid, [('group_id', '=', sale.procurement_group_id.id)], context=context)
+            picking_ids = []
+            if sale.procurement_group_id:
+                picking_ids = StockPicking.search(cr, uid, [('group_id', '=', sale.procurement_group_id.id)], context=context)
+            res[sale.id] = {
+                'picking_ids': picking_ids,
+                'delivery_count': len(picking_ids)
+            }
         return res
 
     def _prepare_order_line_procurement(self, cr, uid, order, line, group_id=False, context=None):
@@ -78,10 +64,18 @@ class sale_order(osv.osv):
         vals['route_ids'] = routes
         vals['warehouse_id'] = order.warehouse_id and order.warehouse_id.id or False
         vals['partner_dest_id'] = order.partner_shipping_id.id
+        vals['invoice_state'] = (order.order_policy == 'picking') and '2binvoiced' or 'none'
         return vals
 
+    def _prepare_invoice(self, cr, uid, order, lines, context=None):
+        if context is None:
+            context = {}
+        invoice_vals = super(sale_order, self)._prepare_invoice(cr, uid, order, lines, context=context)
+        invoice_vals['incoterms_id'] = order.incoterm.id or False
+        return invoice_vals
+
     _columns = {
-        'incoterm': fields.many2one('stock.incoterms', 'Incoterm', help="International Commercial Terms are a series of predefined commercial terms used in international transactions."),
+        'incoterm': fields.many2one('stock.incoterms', 'Incoterms', help="International Commercial Terms are a series of predefined commercial terms used in international transactions."),
         'picking_policy': fields.selection([('direct', 'Deliver each product when available'), ('one', 'Deliver all products at once')],
             'Shipping Policy', required=True, readonly=True, states={'draft': [('readonly', False)], 'sent': [('readonly', False)]},
             help="""Pick 'Deliver each product when available' if you allow partial delivery."""),
@@ -94,8 +88,9 @@ class sale_order(osv.osv):
         'shipped': fields.function(_get_shipped, string='Delivered', type='boolean', store={
                 'procurement.order': (_get_orders_procurements, ['state'], 10)
             }),
-        'warehouse_id': fields.many2one('stock.warehouse', 'Warehouse', required=True),
-        'picking_ids': fields.function(_get_picking_ids, method=True, type='one2many', relation='stock.picking', string='Picking associated to this sale'),
+        'warehouse_id': fields.many2one('stock.warehouse', 'Warehouse', required=True, readonly=True, states={'draft': [('readonly', False)], 'sent': [('readonly', False)]}),
+        'picking_ids': fields.function(_get_picking_ids, method=True, type='one2many', relation='stock.picking', string='Picking associated to this sale', multi='_get_picking_ids'),
+        'delivery_count': fields.function(_get_picking_ids, type='integer', string='Delivery Orders', multi='_get_picking_ids'),
     }
     _defaults = {
         'warehouse_id': _get_default_warehouse,
@@ -128,7 +123,7 @@ class sale_order(osv.osv):
         pick_ids = []
         for so in self.browse(cr, uid, ids, context=context):
             pick_ids += [picking.id for picking in so.picking_ids]
-            
+
         #choose the view_mode accordingly
         if len(pick_ids) > 1:
             result['domain'] = "[('id','in',[" + ','.join(map(str, pick_ids)) + "])]"
@@ -250,15 +245,15 @@ class sale_order_line(osv.osv):
             q = product_uom_obj._compute_qty(cr, uid, uom, pack.qty, default_uom)
 #            qty = qty - qty % q + q
             if qty and (q and not (qty % q) == 0):
-                ean = pack.ean or _('(n/a)')
+                barcode = pack.barcode or _('(n/a)')
                 qty_pack = pack.qty
                 type_ul = pack.ul
                 if not warning_msgs:
                     warn_msg = _("You selected a quantity of %d Units.\n"
                                 "But it's not compatible with the selected packaging.\n"
                                 "Here is a proposition of quantities according to the packaging:\n"
-                                "EAN: %s Quantity: %s Type of ul: %s") % \
-                                    (qty, ean, qty_pack, type_ul.name)
+                                "Barcode: %s Quantity: %s Type of ul: %s") % \
+                                    (qty, barcode, qty_pack, type_ul.name)
                     warning_msgs += _("Picking Information ! : ") + warn_msg + "\n\n"
                 warning = {
                        'title': _('Configuration Error!'),
@@ -294,7 +289,7 @@ class sale_order_line(osv.osv):
 
     def product_id_change_with_wh(self, cr, uid, ids, pricelist, product, qty=0,
             uom=False, qty_uos=0, uos=False, name='', partner_id=False,
-            lang=False, update_tax=True, date_order=False, packaging=False, fiscal_position=False, flag=False, warehouse_id=False, context=None):
+            lang=False, update_tax=True, date_order=False, packaging=False, fiscal_position_id=False, flag=False, warehouse_id=False, context=None):
         context = context or {}
         product_uom_obj = self.pool.get('product.uom')
         product_obj = self.pool.get('product.product')
@@ -302,7 +297,7 @@ class sale_order_line(osv.osv):
         #UoM False due to hack which makes sure uom changes price, ... in product_id_change
         res = self.product_id_change(cr, uid, ids, pricelist, product, qty=qty,
             uom=False, qty_uos=qty_uos, uos=uos, name=name, partner_id=partner_id,
-            lang=lang, update_tax=update_tax, date_order=date_order, packaging=packaging, fiscal_position=fiscal_position, flag=flag, context=context)
+            lang=lang, update_tax=update_tax, date_order=date_order, packaging=packaging, fiscal_position_id=fiscal_position_id, flag=flag, context=context)
 
         if not product:
             res['value'].update({'product_packaging': False})
@@ -399,7 +394,7 @@ class stock_move(osv.osv):
         res = super(stock_move, self)._get_invoice_line_vals(cr, uid, move, partner, inv_type, context=context)
         if inv_type in ('out_invoice', 'out_refund') and move.procurement_id and move.procurement_id.sale_line_id:
             sale_line = move.procurement_id.sale_line_id
-            res['invoice_line_tax_id'] = [(6, 0, [x.id for x in sale_line.tax_id])]
+            res['invoice_line_tax_ids'] = [(6, 0, [x.id for x in sale_line.tax_id])]
             res['account_analytic_id'] = sale_line.order_id.project_id and sale_line.order_id.project_id.id or False
             res['discount'] = sale_line.discount
             if move.product_id.id != sale_line.product_id.id:
@@ -445,12 +440,11 @@ class stock_picking(osv.osv):
         """ Inherit the original function of the 'stock' module
             We select the partner of the sales order as the partner of the customer invoice
         """
-        if picking.sale_id:
-            saleorder_ids = self.pool['sale.order'].search(cr, uid, [('procurement_group_id' ,'=', picking.group_id.id)], context=context)
-            saleorders = self.pool['sale.order'].browse(cr, uid, saleorder_ids, context=context)
-            if saleorders and saleorders[0] and saleorders[0].order_policy == 'picking':
-                saleorder = saleorders[0]
-                return saleorder.partner_invoice_id.id
+        saleorder_ids = self.pool['sale.order'].search(cr, uid, [('procurement_group_id' ,'=', picking.group_id.id)], context=context)
+        saleorders = self.pool['sale.order'].browse(cr, uid, saleorder_ids, context=context)
+        if saleorders and saleorders[0] and saleorders[0].order_policy == 'picking':
+            saleorder = saleorders[0]
+            return saleorder.partner_invoice_id.id
         return super(stock_picking, self)._get_partner_to_invoice(cr, uid, picking, context=context)
     
     def _get_sale_id(self, cr, uid, ids, name, args, context=None):
@@ -480,11 +474,50 @@ class stock_picking(osv.osv):
         sale = move.picking_id.sale_id
         if sale:
             inv_vals.update({
-                'fiscal_position': sale.fiscal_position.id,
-                'payment_term': sale.payment_term.id,
+                'fiscal_position_id': sale.fiscal_position_id.id,
+                'payment_term_id': sale.payment_term_id.id,
                 'user_id': sale.user_id.id,
-                'section_id': sale.section_id.id,
+                'team_id': sale.team_id.id,
                 'name': sale.client_order_ref or '',
                 'comment': sale.note,
                 })
         return inv_vals
+
+class account_invoice(osv.Model):
+    _inherit = 'account.invoice'
+    _columns = {
+        'incoterms_id': fields.many2one(
+            'stock.incoterms',
+            "Incoterms",
+            help="Incoterms are series of sales terms. They are used to divide transaction costs and responsibilities between buyer and seller and reflect state-of-the-art transportation practices.",
+            readonly=True, 
+            states={'draft': [('readonly', False)]}),
+    }
+
+class sale_advance_payment_inv(osv.TransientModel):
+    _inherit = 'sale.advance.payment.inv'
+
+    def _prepare_advance_invoice_vals(self, cr, uid, ids, context=None):
+        result = super(sale_advance_payment_inv,self)._prepare_advance_invoice_vals(cr, uid, ids, context=context)
+        if context is None:
+            context = {}
+
+        sale_obj = self.pool.get('sale.order')
+        sale_ids = context.get('active_ids', [])
+        res = []
+        for sale in sale_obj.browse(cr, uid, sale_ids, context=context):
+            elem = filter(lambda t: t[0] == sale.id, result)[0]
+            elem[1]['incoterms_id'] = sale.incoterm.id or False
+            res.append(elem)
+        return res
+
+
+class procurement_order(osv.osv):
+    _inherit = "procurement.order"
+
+    def _run_move_create(self, cr, uid, procurement, context=None):
+        vals = super(procurement_order, self)._run_move_create(cr, uid, procurement, context=context)
+        #copy the sequence from the sale order line on the stock move
+        if procurement.sale_line_id:
+            vals.update({'sequence': procurement.sale_line_id.sequence})
+        return vals

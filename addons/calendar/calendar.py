@@ -20,6 +20,7 @@ from openerp.tools import DEFAULT_SERVER_DATE_FORMAT, DEFAULT_SERVER_DATETIME_FO
 from openerp.tools.translate import _
 from openerp.http import request
 from operator import itemgetter
+from openerp.exceptions import UserError
 
 import logging
 _logger = logging.getLogger(__name__)
@@ -102,7 +103,7 @@ class calendar_attendee(osv.Model):
     }
 
     def copy(self, cr, uid, id, default=None, context=None):
-        raise osv.except_osv(_('Warning!'), _('You cannot duplicate a calendar attendee.'))
+        raise UserError(_('You cannot duplicate a calendar attendee.'))
 
     def onchange_partner_id(self, cr, uid, ids, partner_id, context=None):
         """
@@ -139,7 +140,7 @@ class calendar_attendee(osv.Model):
         cal = vobject.iCalendar()
         event = cal.add('vevent')
         if not event_obj.start or not event_obj.stop:
-            raise osv.except_osv(_('Warning!'), _("First you have to specify the date of the invitation."))
+            raise UserError(_("First you have to specify the date of the invitation."))
         event.add('created').value = ics_datetime(time.strftime(DEFAULT_SERVER_DATETIME_FORMAT))
         event.add('dtstart').value = ics_datetime(event_obj.start, event_obj.allday)
         event.add('dtend').value = ics_datetime(event_obj.stop, event_obj.allday)
@@ -188,7 +189,7 @@ class calendar_attendee(osv.Model):
         data_pool = self.pool['ir.model.data']
         mailmess_pool = self.pool['mail.message']
         mail_pool = self.pool['mail.mail']
-        template_pool = self.pool['email.template']
+        template_pool = self.pool['mail.template']
         local_context = context.copy()
         color = {
             'needsAction': 'grey',
@@ -879,8 +880,8 @@ class calendar_event(osv.Model):
                     allday = event.allday
                 else:
                     allday = False
-                    _logger.warning("Calendar - All day is not specified, arbitrarily set to False")
-                    #raise osv.except_osv(_('Error!'), ("Need to know if it's an allday or not..."))
+                    _logger.debug("Calendar - All day is not specified, arbitrarily set to False")
+                    #raise UserError(_("Need to know if it's an allday or not..."))
 
             key = "date" if allday else "datetime"
             notkey = "datetime" if allday else "date"
@@ -907,14 +908,6 @@ class calendar_event(osv.Model):
                 duration = float(diff.days) * 24 + (float(diff.seconds) / 3600)
                 values['duration'] = round(duration, 2)
 
-    _track = {
-        'location': {
-            'calendar.subtype_invitation': lambda self, cr, uid, obj, ctx=None: True,
-        },
-        'start': {
-            'calendar.subtype_invitation': lambda self, cr, uid, obj, ctx=None: True,
-        },
-    }
     _columns = {
         'id': fields.integer('ID', readonly=True),
         'state': fields.selection([('draft', 'Unconfirmed'), ('open', 'Confirmed')], string='Status', readonly=True, track_visibility='onchange'),
@@ -932,7 +925,7 @@ class calendar_event(osv.Model):
         'stop_datetime': fields.datetime('End Datetime', states={'done': [('readonly', True)]}, track_visibility='onchange'),  # old date_deadline
         'duration': fields.float('Duration', states={'done': [('readonly', True)]}),
         'description': fields.text('Description', states={'done': [('readonly', True)]}),
-        'class': fields.selection([('public', 'Public'), ('private', 'Private'), ('confidential', 'Public for Employees')], 'Privacy', states={'done': [('readonly', True)]}),
+        'class': fields.selection([('public', 'Everyone'), ('private', 'Only me'), ('confidential', 'Only internal users')], 'Privacy', states={'done': [('readonly', True)]}),
         'location': fields.char('Location', help="Location of Event", track_visibility='onchange', states={'done': [('readonly', True)]}),
         'show_as': fields.selection([('free', 'Free'), ('busy', 'Busy')], 'Show Time as', states={'done': [('readonly', True)]}),
 
@@ -1116,6 +1109,17 @@ class calendar_event(osv.Model):
                         if self.pool['calendar.attendee']._send_mail_to_attendees(cr, uid, att_id, email_from=mail_from, context=context):
                             self.message_post(cr, uid, event.id, body=_("An invitation email has been sent to attendee %s") % (partner.name,), subtype="calendar.subtype_invitation", context=context)
 
+            if current_user.partner_id.id not in new_att_partner_ids:
+                access_token = self.new_invitation_token(cr, uid, event, current_user.partner_id.id)
+                values = {
+                    'partner_id': current_user.partner_id.id,
+                    'event_id': event.id,
+                    'access_token': access_token,
+                    'email': current_user.partner_id.email,
+                }
+                current_user_att_id = self.pool['calendar.attendee'].create(cr, uid, values, context=context)
+                new_attendees.append(current_user_att_id)
+                new_att_partner_ids.append(current_user.partner_id.id)
             if new_attendees:
                 self.write(cr, uid, [event.id], {'attendee_ids': [(4, att) for att in new_attendees]}, context=context)
             if new_att_partner_ids:
@@ -1263,9 +1267,9 @@ class calendar_event(osv.Model):
         @return: string containing recurring rule (empty if no rule)
         """
         if data['interval'] and data['interval'] < 0:
-            raise osv.except_osv(_('warning!'), _('interval cannot be negative.'))
+            raise UserError(_('interval cannot be negative.'))
         if data['count'] and data['count'] <= 0:
-            raise osv.except_osv(_('warning!'), _('count cannot be negative or 0.'))
+            raise UserError(_('Event recurrence interval cannot be negative.'))
 
         def get_week_string(freq, data):
             weekdays = ['mo', 'tu', 'we', 'th', 'fr', 'sa', 'su']
@@ -1278,7 +1282,7 @@ class calendar_event(osv.Model):
         def get_month_string(freq, data):
             if freq == 'monthly':
                 if data.get('month_by') == 'date' and (data.get('day') < 1 or data.get('day') > 31):
-                    raise osv.except_osv(_('Error!'), ("Please select a proper day of the month."))
+                    raise UserError(_("Please select a proper day of the month."))
 
                 if data.get('month_by') == 'day':  # Eg : Second Monday of the month
                     return ';BYDAY=' + data.get('byday') + data.get('week_list')
@@ -1373,6 +1377,14 @@ class calendar_event(osv.Model):
             res[virtual_id] = result[real_id]
         return res
 
+    def _track_subtype(self, cr, uid, ids, init_values, context=None):
+        record = self.browse(cr, uid, ids[0], context=context)
+        if 'start' in init_values and record.start:
+            return 'calendar.subtype_invitation'
+        elif 'location' in init_values and record.location:
+            return 'calendar.subtype_invitation'
+        return super(calendar_event, self)._track_subtype(cr, uid, ids, init_values, context=context)
+
     def onchange_partner_ids(self, cr, uid, ids, value, context=None):
         """ The basic purpose of this method is to check that destination partners
             effectively have email addresses. Otherwise a warning is thrown.
@@ -1412,12 +1424,12 @@ class calendar_event(osv.Model):
         ]
 
     @api.cr_uid_ids_context
-    def message_post(self, cr, uid, thread_id, body='', subject=None, type='notification', subtype=None, parent_id=False, attachments=None, context=None, **kwargs):
+    def message_post(self, cr, uid, thread_id, context=None, **kwargs):
         if isinstance(thread_id, basestring):
             thread_id = get_real_ids(thread_id)
         if context.get('default_date'):
             del context['default_date']
-        return super(calendar_event, self).message_post(cr, uid, thread_id, body=body, subject=subject, type=type, subtype=subtype, parent_id=parent_id, attachments=attachments, context=context, **kwargs)
+        return super(calendar_event, self).message_post(cr, uid, thread_id, context=context, **kwargs)
 
     def message_subscribe(self, cr, uid, ids, partner_ids, subtype_ids=None, context=None):
         return super(calendar_event, self).message_subscribe(cr, uid, get_real_ids(ids), partner_ids, subtype_ids=subtype_ids, context=context)
@@ -1658,7 +1670,7 @@ class calendar_event(osv.Model):
         context = dict(context or {})
 
         if 'date' in groupby:
-            raise osv.except_osv(_('Warning!'), _('Group by date is not supported, use the calendar view instead.'))
+            raise UserError(_('Group by date is not supported, use the calendar view instead.'))
         virtual_id = context.get('virtual_id', True)
         context.update({'virtual_id': False})
         res = super(calendar_event, self).read_group(cr, uid, domain, fields, groupby, offset=offset, limit=limit, context=context, orderby=orderby, lazy=lazy)

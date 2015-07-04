@@ -1,23 +1,5 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Business Applications
-#    Copyright (C) 2004-2012 OpenERP S.A. (<http://openerp.com>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 import openerp
 from openerp import SUPERUSER_ID
@@ -37,7 +19,7 @@ class sale_configuration(osv.osv_memory):
                  'and to automatically creates project tasks from procurement lines.\n'
                  '-This installs the modules project_timesheet and sale_service.'),
         'default_order_policy': fields.selection(
-            [('manual', 'Invoice based on sales orders'), ('picking', 'Invoice based on deliveries')],
+            [('manual', 'Create invoice on sales order'), ('picking', 'Create invoice on deliveries')],
             'The default invoicing method is', default_model='sale.order',
             help="You can generate invoices based on sales orders or based on shippings."),
         'module_delivery': fields.boolean('Allow adding shipping costs',
@@ -84,9 +66,7 @@ class sale_configuration(osv.osv_memory):
         res = super(sale_configuration, self).set_sale_defaults(cr, uid, ids, context)
         return res
 
-    def onchange_invoice_methods(self, cr, uid, ids, group_invoice_so_lines, group_invoice_deli_orders, context=None):
+    def onchange_invoice_methods(self, cr, uid, ids, group_invoice_deli_orders, context=None):
         if not group_invoice_deli_orders:
             return {'value': {'default_order_policy': 'manual'}}
-        if not group_invoice_so_lines:
-            return {'value': {'default_order_policy': 'picking'}}
-        return {}
+        return {'value': {'default_order_policy': 'picking'}}

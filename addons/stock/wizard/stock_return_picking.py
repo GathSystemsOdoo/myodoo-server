@@ -1,27 +1,10 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-2010 Tiny SPRL (<http://tiny.be>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from openerp.osv import osv, fields
 from openerp.tools.translate import _
 import openerp.addons.decimal_precision as dp
+from openerp.exceptions import UserError
 
 class stock_return_picking_line(osv.osv_memory):
     _name = "stock.return.picking.line"
@@ -69,7 +52,7 @@ class stock_return_picking(osv.osv_memory):
         chained_move_exist = False
         if pick:
             if pick.state != 'done':
-                raise osv.except_osv(_('Warning!'), _("You may only return pickings that are Done!"))
+                raise UserError(_("You may only return pickings that are Done!"))
 
             for move in pick.move_lines:
                 if move.move_dest_id:
@@ -81,10 +64,10 @@ class stock_return_picking(osv.osv_memory):
                     if not quant.reservation_id or quant.reservation_id.origin_returned_move_id.id != move.id:
                         qty += quant.qty
                 qty = uom_obj._compute_qty(cr, uid, move.product_id.uom_id.id, qty, move.product_uom.id)
-                result1.append({'product_id': move.product_id.id, 'quantity': qty, 'move_id': move.id})
+                result1.append((0, 0, {'product_id': move.product_id.id, 'quantity': qty, 'move_id': move.id}))
 
             if len(result1) == 0:
-                raise osv.except_osv(_('Warning!'), _("No products to return (only lines in Done state and not fully returned yet can be returned)!"))
+                raise UserError(_("No products to return (only lines in Done state and not fully returned yet can be returned)!"))
             if 'product_return_moves' in fields:
                 res.update({'product_return_moves': result1})
             if 'move_dest_exists' in fields:
@@ -127,12 +110,14 @@ class stock_return_picking(osv.osv_memory):
             'picking_type_id': pick_type_id,
             'state': 'draft',
             'origin': pick.name,
+            'location_id': pick.location_dest_id.id,
+            'location_dest_id': pick.location_id.id,
         }, context=context)
 
         for data_get in data_obj.browse(cr, uid, data['product_return_moves'], context=context):
             move = data_get.move_id
             if not move:
-                raise osv.except_osv(_('Warning !'), _("You have manually created product lines, please delete them to proceed"))
+                raise UserError(_("You have manually created product lines, please delete them to proceed"))
             new_qty = data_get.quantity
             if new_qty:
                 # The return of a return should be linked with the original's destination move if it was not cancelled
@@ -159,10 +144,8 @@ class stock_return_picking(osv.osv_memory):
                 })
 
         if not returned_lines:
-            raise osv.except_osv(_('Warning!'), _("Please specify at least one non-zero quantity."))
+            raise UserError(_("Please specify at least one non-zero quantity."))
 
-        pick_obj.action_confirm(cr, uid, [new_picking], context=context)
-        pick_obj.action_assign(cr, uid, [new_picking], context)
         return new_picking, pick_type_id
 
     def create_returns(self, cr, uid, ids, context=None):
@@ -195,6 +178,3 @@ class stock_return_picking(osv.osv_memory):
             'type': 'ir.actions.act_window',
             'context': ctx,
         }
-
-
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

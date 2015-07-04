@@ -1,23 +1,5 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-2009 Tiny SPRL (<http://tiny.be>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 import codecs
 import csv
@@ -151,11 +133,11 @@ csv.register_dialect("UNIX", UNIX_LINE_TERMINATOR)
 #
 def translate(cr, name, source_type, lang, source=None):
     if source and name:
-        cr.execute('select value from ir_translation where lang=%s and type=%s and name=%s and src=%s', (lang, source_type, str(name), source))
+        cr.execute('select value from ir_translation where lang=%s and type=%s and name=%s and src=%s and md5(src)=md5(%s)', (lang, source_type, str(name), source, source))
     elif name:
         cr.execute('select value from ir_translation where lang=%s and type=%s and name=%s', (lang, source_type, str(name)))
     elif source:
-        cr.execute('select value from ir_translation where lang=%s and type=%s and src=%s', (lang, source_type, source))
+        cr.execute('select value from ir_translation where lang=%s and type=%s and src=%s and md5(src)=md5(%s)', (lang, source_type, source, source))
     res_trans = cr.fetchone()
     res = res_trans and res_trans[0] or False
     return res
@@ -978,7 +960,7 @@ def trans_load_data(cr, fileobj, fileformat, lang, lang_name=None, verbose=True,
                     pass
 
         else:
-            _logger.error('Bad file format: %s', fileformat)
+            _logger.info('Bad file format: %s', fileformat)
             raise Exception(_('Bad file format'))
 
         # Read the POT references, and keep them indexed by source string.
@@ -1111,6 +1093,3 @@ def load_language(cr, lang):
     language_installer = registry['base.language.install']
     oid = language_installer.create(cr, SUPERUSER_ID, {'lang': lang})
     language_installer.lang_install(cr, SUPERUSER_ID, [oid], context=None)
-
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:
-

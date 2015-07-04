@@ -146,6 +146,7 @@ class TransactionCase(BaseCase):
 
     def tearDown(self):
         # rollback and close the cursor, and reset the environments
+        self.registry.clear_caches()
         self.env.reset()
         self.cr.rollback()
         self.cr.close()
@@ -167,6 +168,7 @@ class SingleTransactionCase(BaseCase):
     @classmethod
     def tearDownClass(cls):
         # rollback and close the cursor, and reset the environments
+        cls.registry.clear_caches()
         cls.env.reset()
         cls.cr.rollback()
         cls.cr.close()
@@ -396,6 +398,3 @@ class HttpCase(TransactionCase):
         phantomtest = os.path.join(os.path.dirname(__file__), 'phantomtest.js')
         cmd = ['phantomjs', phantomtest, json.dumps(options)]
         self.phantom_run(cmd, timeout)
-
-
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

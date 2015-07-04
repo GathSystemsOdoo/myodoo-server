@@ -1,23 +1,5 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-2010 Tiny SPRL (<http://tiny.be>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 import logging
 import time
@@ -25,26 +7,14 @@ from openerp.osv import fields,osv
 from openerp.tools.translate import _
 import openerp.addons.decimal_precision as dp
 from openerp.tools.safe_eval import safe_eval as eval
+from openerp.exceptions import UserError
 
 _logger = logging.getLogger(__name__)
 
 class delivery_carrier(osv.osv):
     _name = "delivery.carrier"
     _description = "Carrier"
-
-    def name_get(self, cr, uid, ids, context=None):
-        if not len(ids):
-            return []
-        if context is None:
-            context = {}
-        order_id = context.get('order_id',False)
-        if not order_id:
-            res = super(delivery_carrier, self).name_get(cr, uid, ids, context=context)
-        else:
-            order = self.pool.get('sale.order').browse(cr, uid, order_id, context=context)
-            currency = order.pricelist_id.currency_id.name or ''
-            res = [(r['id'], r['name']+' ('+(str(r['price']))+' '+currency+')') for r in self.read(cr, uid, ids, ['name', 'price'], context)]
-        return res
+    _order = 'sequence, id'
 
     def get_price(self, cr, uid, ids, field_name, arg=None, context=None):
         res={}
@@ -63,9 +33,9 @@ class delivery_carrier(osv.osv):
                   try:
                     price=grid_obj.get_price(cr, uid, carrier_grid, order, time.strftime('%Y-%m-%d'), context)
                     available = True
-                  except osv.except_osv, e:
+                  except UserError, e:
                     # no suitable delivery method found, probably configuration error
-                    _logger.error("Carrier %s: %s\n%s" % (carrier.name, e.name, e.value))
+                    _logger.info("Carrier %s: %s", carrier.name, e.name)
                     price = 0.0
               else:
                   price = 0.0
@@ -76,7 +46,8 @@ class delivery_carrier(osv.osv):
         return res
 
     _columns = {
-        'name': fields.char('Delivery Method', required=True),
+        'name': fields.char('Delivery Method', required=True, translate=True),
+        'sequence': fields.integer('Sequence', help="Determine the display order"),
         'partner_id': fields.many2one('res.partner', 'Transport Company', required=True, help="The partner that is doing the delivery service."),
         'product_id': fields.many2one('product.product', 'Delivery Product', required=True),
         'grids_id': fields.one2many('delivery.grid', 'carrier_id', 'Delivery Grids'),
@@ -94,6 +65,7 @@ class delivery_carrier(osv.osv):
     _defaults = {
         'active': 1,
         'free_if_more_than': False,
+        'sequence': 10,
     }
 
     def grid_get(self, cr, uid, ids, contact_id, context=None):
@@ -126,11 +98,12 @@ class delivery_carrier(osv.osv):
 
             # not using advanced pricing per destination: override grid
             grid_id = grid_pool.search(cr, uid, [('carrier_id', '=', record.id)], context=context)
-            if grid_id and not (record.normal_price is not False or record.free_if_more_than):
+            if grid_id and not (record.normal_price or record.free_if_more_than):
                 grid_pool.unlink(cr, uid, grid_id, context=context)
                 grid_id = None
 
-            if not (record.normal_price is not False or record.free_if_more_than):
+            # Check that float, else 0.0 is False
+            if not (isinstance(record.normal_price,float) or record.free_if_more_than):
                 continue
 
             if not grid_id:
@@ -157,7 +130,7 @@ class delivery_carrier(osv.osv):
                     'list_price': 0.0,
                 }
                 grid_line_pool.create(cr, uid, line_data, context=context)
-            if record.normal_price is not False:
+            if isinstance(record.normal_price,float):
                 line_data = {
                     'grid_id': grid_id and grid_id[0],
                     'name': _('Default price'),
@@ -240,7 +213,7 @@ class delivery_grid(osv.osv):
                 ok = True
                 break
         if not ok:
-            raise osv.except_osv(_("Unable to fetch delivery method!"), _("Selected product in the delivery method doesn't fulfill any of the delivery grid(s) criteria."))
+            raise UserError(_("Selected product in the delivery method doesn't fulfill any of the delivery grid(s) criteria."))
 
         return price
 
@@ -271,6 +244,3 @@ class delivery_grid_line(osv.osv):
         'variable_factor': lambda *args: 'weight',
     }
     _order = 'sequence, list_price'
-
-
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

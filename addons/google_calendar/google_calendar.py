@@ -202,8 +202,6 @@ class google_calendar(osv.AbstractModel):
     _name = 'google.%s' % STR_SERVICE
 
     def generate_data(self, cr, uid, event, isCreating=False, context=None):
-        if not context:
-            context = {}
         if event.allday:
             start_date = fields.datetime.context_timestamp(cr, uid, datetime.strptime(event.start, tools.DEFAULT_SERVER_DATETIME_FORMAT), context=context).isoformat('T').split('T')[0]
             final_date = fields.datetime.context_timestamp(cr, uid, datetime.strptime(event.start, tools.DEFAULT_SERVER_DATETIME_FORMAT) + timedelta(hours=event.duration) + timedelta(days=isCreating and 1 or 0), context=context).isoformat('T').split('T')[0]
@@ -228,18 +226,19 @@ class google_calendar(osv.AbstractModel):
                 "method": "email" if alarm.type == "email" else "popup",
                 "minutes": alarm.duration_minutes
             })
+
         data = {
             "summary": event.name or '',
             "description": event.description or '',
             "start": {
                 type: start_date,
                 vstype: None,
-                'timeZone': context.get('tz', 'UTC'),
+                'timeZone': 'UTC'
             },
             "end": {
                 type: final_date,
                 vstype: None,
-                'timeZone': context.get('tz', 'UTC'),
+                'timeZone': 'UTC'
             },
             "attendees": attendee_list,
             "reminders": {
@@ -366,7 +365,7 @@ class google_calendar(osv.AbstractModel):
 
         url = "/calendar/v3/calendars/%s/events/%s?fields=%s&access_token=%s" % ('primary', google_event['id'], 'id,updated', self.get_token(cr, uid, context))
         headers = {'Content-type': 'application/json', 'Accept': 'text/plain'}
-        data = self.generate_data(cr, uid, oe_event, context=context)
+        data = self.generate_data(cr, uid, oe_event, context)
         data['sequence'] = google_event.get('sequence', 0)
         data_json = simplejson.dumps(data)
 
@@ -632,8 +631,8 @@ class google_calendar(osv.AbstractModel):
                     att_obj.write(cr, uid, [att.id for att in att.event_id.attendee_ids], {'google_internal_event_id': response['id'], 'oe_synchro_date': update_date})
                     cr.commit()
                 else:
-                    _logger.warning("Impossible to create event %s. [%s]" % (att.event_id.id, st))
-                    _logger.warning("Response : %s" % response)
+                    _logger.warning("Impossible to create event %s. [%s] Enable DEBUG for response detail.", att.event_id.id, st)
+                    _logger.debug("Response : %s" % response)
         return new_ids
 
     def get_context_no_virtual(self, context):
@@ -679,7 +678,7 @@ class google_calendar(osv.AbstractModel):
                             cr.commit()
                         else:
                             _logger.warning("Impossible to create event %s. [%s]" % (att.event_id.id, st))
-                            _logger.warning("Response : %s" % response)
+                            _logger.debug("Response : %s" % response)
                     except:
                         pass
         return new_ids

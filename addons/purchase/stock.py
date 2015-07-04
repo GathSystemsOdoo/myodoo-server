@@ -1,27 +1,10 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-2010 Tiny SPRL (<http://tiny.be>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from openerp import SUPERUSER_ID
 from openerp.osv import fields, osv
 from openerp.tools.translate import _
+from openerp.exceptions import UserError
 
 class stock_move(osv.osv):
     _inherit = 'stock.move'
@@ -93,11 +76,8 @@ class stock_move(osv.osv):
         return invoice_line_id
 
     def _get_master_data(self, cr, uid, move, company, context=None):
-        if context.get('inv_type') == 'in_invoice' and move.purchase_line_id:
+        if context.get('inv_type') in ('in_invoice', 'in_refund') and move.purchase_line_id:
             purchase_order = move.purchase_line_id.order_id
-            return purchase_order.partner_id, purchase_order.create_uid.id, purchase_order.currency_id.id
-        if context.get('inv_type') == 'in_refund' and move.origin_returned_move_id.purchase_line_id:
-            purchase_order = move.origin_returned_move_id.purchase_line_id.order_id
             return purchase_order.partner_id, purchase_order.create_uid.id, purchase_order.currency_id.id
         elif context.get('inv_type') in ('in_invoice', 'in_refund') and move.picking_id:
             # In case of an extra move, it is better to use the data from the original moves
@@ -116,13 +96,9 @@ class stock_move(osv.osv):
 
     def _get_invoice_line_vals(self, cr, uid, move, partner, inv_type, context=None):
         res = super(stock_move, self)._get_invoice_line_vals(cr, uid, move, partner, inv_type, context=context)
-        if inv_type == 'in_invoice' and move.purchase_line_id:
+        if inv_type in ('in_invoice', 'in_refund') and move.purchase_line_id:
             purchase_line = move.purchase_line_id
-            res['invoice_line_tax_id'] = [(6, 0, [x.id for x in purchase_line.taxes_id])]
-            res['price_unit'] = purchase_line.price_unit
-        elif inv_type == 'in_refund' and move.origin_returned_move_id.purchase_line_id:
-            purchase_line = move.origin_returned_move_id.purchase_line_id
-            res['invoice_line_tax_id'] = [(6, 0, [x.id for x in purchase_line.taxes_id])]
+            res['invoice_line_tax_ids'] = [(6, 0, [x.id for x in purchase_line.taxes_id])]
             res['price_unit'] = purchase_line.price_unit
         return res
 
@@ -216,8 +192,8 @@ class stock_picking(osv.osv):
         if move.purchase_line_id and move.purchase_line_id.order_id:
             purchase = move.purchase_line_id.order_id
             inv_vals.update({
-                'fiscal_position': purchase.fiscal_position.id,
-                'payment_term': purchase.payment_term_id.id,
+                'fiscal_position_id': purchase.fiscal_position_id.id,
+                'payment_term_id': purchase.payment_term_id.id,
                 })
         return inv_vals
 
@@ -242,7 +218,7 @@ class stock_warehouse(osv.osv):
             buy_route_id = route_obj.search(cr, uid, [('name', 'like', _('Buy'))], context=context)
             buy_route_id = buy_route_id and buy_route_id[0] or False
         if not buy_route_id:
-            raise osv.except_osv(_('Error!'), _('Can\'t find any generic Buy route.'))
+            raise UserError(_('Can\'t find any generic Buy route.'))
 
         return {
             'name': self._format_routename(cr, uid, warehouse, _(' Buy'), context=context),
@@ -251,6 +227,7 @@ class stock_warehouse(osv.osv):
             'action': 'buy',
             'picking_type_id': warehouse.in_type_id.id,
             'warehouse_id': warehouse.id,
+            'group_propagation_option': 'none',
         }
 
     def create_routes(self, cr, uid, ids, warehouse, context=None):
@@ -299,7 +276,7 @@ class stock_warehouse(osv.osv):
     def _handle_renaming(self, cr, uid, warehouse, name, code, context=None):
         res = super(stock_warehouse, self)._handle_renaming(cr, uid, warehouse, name, code, context=context)
         pull_obj = self.pool.get('procurement.rule')
-        #change the buy pull rule name
+        #change the buy procurement rule name
         if warehouse.buy_pull_id:
             pull_obj.write(cr, uid, warehouse.buy_pull_id.id, {'name': warehouse.buy_pull_id.name.replace(warehouse.name, name, 1)}, context=context)
         return res

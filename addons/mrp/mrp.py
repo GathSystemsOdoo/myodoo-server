@@ -1,33 +1,17 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-2010 Tiny SPRL (<http://tiny.be>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 import time
-import openerp.addons.decimal_precision as dp
 from collections import OrderedDict
-from openerp.osv import fields, osv, orm
+
+import openerp.addons.decimal_precision as dp
+from openerp.osv import fields, osv
 from openerp.tools import DEFAULT_SERVER_DATE_FORMAT
 from openerp.tools import float_compare, float_is_zero
 from openerp.tools.translate import _
 from openerp import tools, SUPERUSER_ID
 from openerp.addons.product import _common
+from openerp.exceptions import UserError, AccessError
 
 
 class mrp_property_group(osv.osv):
@@ -80,7 +64,7 @@ class mrp_workcenter(osv.osv):
         'costs_cycle_account_id': fields.many2one('account.analytic.account', 'Cycle Account', domain=[('type','!=','view')],
             help="Fill this only if you want automatic analytic accounting entries on production orders."),
         'costs_journal_id': fields.many2one('account.analytic.journal', 'Analytic Journal'),
-        'costs_general_account_id': fields.many2one('account.account', 'General Account', domain=[('type','!=','view')]),
+        'costs_general_account_id': fields.many2one('account.account', 'General Account', domain=[('deprecated', '=', False)]),
         'resource_id': fields.many2one('resource.resource','Resource', ondelete='cascade', required=True),
         'product_id': fields.many2one('product.product','Work Center Product', help="Fill this product to easily track your production costs in the analytic accounting."),
     }
@@ -112,7 +96,7 @@ class mrp_routing(osv.osv):
     For specifying the routings of Work Centers.
     """
     _name = 'mrp.routing'
-    _description = 'Routing'
+    _description = 'Work Order Operations'
     _columns = {
         'name': fields.char('Name', required=True),
         'active': fields.boolean('Active', help="If the active field is set to False, it will allow you to hide the routing without removing it."),
@@ -139,7 +123,7 @@ class mrp_routing_workcenter(osv.osv):
     """
     _name = 'mrp.routing.workcenter'
     _description = 'Work Center Usage'
-    _order = 'sequence'
+    _order = 'sequence, id'
     _columns = {
         'workcenter_id': fields.many2one('mrp.workcenter', 'Work Center', required=True),
         'name': fields.char('Name', required=True),
@@ -147,15 +131,16 @@ class mrp_routing_workcenter(osv.osv):
         'cycle_nbr': fields.float('Number of Cycles', required=True,
             help="Number of iterations this work center has to do in the specified operation of the routing."),
         'hour_nbr': fields.float('Number of Hours', required=True, help="Time in hours for this Work Center to achieve the operation of the specified routing."),
-        'routing_id': fields.many2one('mrp.routing', 'Parent Routing', select=True, ondelete='cascade',
-             help="Routing indicates all the Work Centers used, for how long and/or cycles." \
-                "If Routing is indicated then,the third tab of a production order (Work Centers) will be automatically pre-completed."),
+        'routing_id': fields.many2one('mrp.routing', 'Parent Work Order Operations', select=True, ondelete='cascade',
+             help="Work Order Operations indicates all the Work Centers used, for how long and/or cycles." \
+                "If Work Order Operations is indicated then,the third tab of a production order (Work Centers) will be automatically pre-completed."),
         'note': fields.text('Description'),
         'company_id': fields.related('routing_id', 'company_id', type='many2one', relation='res.company', string='Company', store=True, readonly=True),
     }
     _defaults = {
         'cycle_nbr': lambda *a: 1.0,
         'hour_nbr': lambda *a: 0.0,
+        'sequence': 100,
     }
 
 class mrp_bom(osv.osv):
@@ -170,7 +155,7 @@ class mrp_bom(osv.osv):
         'name': fields.char('Name'),
         'code': fields.char('Reference', size=16),
         'active': fields.boolean('Active', help="If the active field is set to False, it will allow you to hide the bills of material without removing it."),
-        'type': fields.selection([('normal', 'Normal'), ('phantom', 'Set')], 'BoM Type', required=True,
+        'type': fields.selection([('normal','Manufacture this product'),('phantom','Ship this product as a set of components (kit)')], 'BoM Type', required=True,
                 help= "Set: When processing a sales order for this product, the delivery order will contain the raw materials, instead of the finished product."),
         'position': fields.char('Internal Reference', help="Reference to a position in an external plan."),
         'product_tmpl_id': fields.many2one('product.template', 'Product', domain="[('type', '!=', 'service')]", required=True),
@@ -183,7 +168,7 @@ class mrp_bom(osv.osv):
         'date_start': fields.date('Valid From', help="Validity of this BoM. Keep empty if it's always valid."),
         'date_stop': fields.date('Valid Until', help="Validity of this BoM. Keep empty if it's always valid."),
         'sequence': fields.integer('Sequence', help="Gives the sequence order when displaying a list of bills of material."),
-        'routing_id': fields.many2one('mrp.routing', 'Routing', help="The list of operations (list of work centers) to produce the finished product. "\
+        'routing_id': fields.many2one('mrp.routing', 'Work Order Operations', help="The list of operations (list of work centers) to produce the finished product. "\
                 "The routing is mainly used to compute work center costs during operations and to plan future loads on work centers based on production planning."),
         'product_rounding': fields.float('Product Rounding', help="Rounding applied on the product quantity."),
         'product_efficiency': fields.float('Manufacturing Efficiency', required=True, help="A factor of 0.9 means a loss of 10% during the production process."),
@@ -315,7 +300,7 @@ class mrp_bom(osv.osv):
                 continue
 
             if previous_products and bom_line_id.product_id.product_tmpl_id.id in previous_products:
-                raise osv.except_osv(_('Invalid Action!'), _('BoM "%s" contains a BoM line with a product recursion: "%s".') % (master_bom.name,bom_line_id.product_id.name_get()[0][1]))
+                raise UserError(_('BoM "%s" contains a BoM line with a product recursion: "%s".') % (master_bom.name,bom_line_id.product_id.name_get()[0][1]))
 
             quantity = _factor(bom_line_id.product_qty * factor, bom_line_id.product_efficiency, bom_line_id.product_rounding)
             bom_id = self._bom_find(cr, uid, product_id=bom_line_id.product_id.id, properties=properties, context=context)
@@ -341,7 +326,7 @@ class mrp_bom(osv.osv):
                 result = result + res[0]
                 result2 = result2 + res[1]
             else:
-                raise osv.except_osv(_('Invalid Action!'), _('BoM "%s" contains a phantom BoM line but the product "%s" does not have any BoM defined.') % (master_bom.name,bom_line_id.product_id.name_get()[0][1]))
+                raise UserError(_('BoM "%s" contains a phantom BoM line but the product "%s" does not have any BoM defined.') % (master_bom.name,bom_line_id.product_id.name_get()[0][1]))
 
         return result, result2
 
@@ -365,7 +350,7 @@ class mrp_bom(osv.osv):
 
     def unlink(self, cr, uid, ids, context=None):
         if self.pool['mrp.production'].search(cr, uid, [('bom_id', 'in', ids), ('state', 'not in', ['done', 'cancel'])], context=context):
-            raise osv.except_osv(_('Warning!'), _('You can not delete a Bill of Material with running manufacturing orders.\nPlease close or cancel it first.'))
+            raise UserError(_('You can not delete a Bill of Material with running manufacturing orders.\nPlease close or cancel it first.'))
         return super(mrp_bom, self).unlink(cr, uid, ids, context=context)
 
     def onchange_product_tmpl_id(self, cr, uid, ids, product_tmpl_id, product_qty=0, context=None):
@@ -417,7 +402,7 @@ class mrp_bom_line(osv.osv):
         'date_start': fields.date('Valid From', help="Validity of component. Keep empty if it's always valid."),
         'date_stop': fields.date('Valid Until', help="Validity of component. Keep empty if it's always valid."),
         'sequence': fields.integer('Sequence', help="Gives the sequence order when displaying."),
-        'routing_id': fields.many2one('mrp.routing', 'Routing', help="The list of operations (list of work centers) to produce the finished product. The routing is mainly used to compute work center costs during operations and to plan future loads on work centers based on production planning."),
+        'routing_id': fields.many2one('mrp.routing', 'Work Order Operations', help="The list of operations (list of work centers) to produce the finished product. The routing is mainly used to compute work center costs during operations and to plan future loads on work centers based on production planning."),
         'product_rounding': fields.float('Product Rounding', help="Rounding applied on the product quantity."),
         'product_efficiency': fields.float('Manufacturing Efficiency', required=True, help="A factor of 0.9 means a loss of 10% within the production process."),
         'property_ids': fields.many2many('mrp.property', string='Properties'), #Not used
@@ -441,6 +426,14 @@ class mrp_bom_line(osv.osv):
         ('bom_qty_zero', 'CHECK (product_qty>0)', 'All product quantities must be greater than 0.\n' \
             'You should install the mrp_byproduct module if you want to manage extra products on BoMs !'),
     ]
+
+    def create(self, cr, uid, values, context=None):
+        if context is None:
+            context = {}
+        product_obj = self.pool.get('product.product')
+        if 'product_id' in values and not 'product_uom' in values:
+            values['product_uom'] = product_obj.browse(cr, uid, values.get('product_id'), context=context).uom_id.id
+        return super(mrp_bom_line, self).create(cr, uid, values, context=context)
 
     def onchange_uom(self, cr, uid, ids, product_id, product_uom, context=None):
         res = {'value': {}}
@@ -497,17 +490,11 @@ class mrp_production(osv.osv):
                 result[prod.id]['cycle_total'] += wc.cycle
         return result
 
-    def _get_workcenter_line(self, cr, uid, ids, context=None):
-        result = {}
-        for line in self.pool['mrp.production.workcenter.line'].browse(cr, uid, ids, context=context):
-            result[line.production_id.id] = True
-        return result.keys()
-
     def _src_id_default(self, cr, uid, ids, context=None):
         try:
             location_model, location_id = self.pool.get('ir.model.data').get_object_reference(cr, uid, 'stock', 'stock_location_stock')
             self.pool.get('stock.location').check_access_rule(cr, uid, [location_id], 'read', context=context)
-        except (orm.except_orm, ValueError):
+        except (AccessError, ValueError):
             location_id = False
         return location_id
 
@@ -515,7 +502,7 @@ class mrp_production(osv.osv):
         try:
             location_model, location_id = self.pool.get('ir.model.data').get_object_reference(cr, uid, 'stock', 'stock_location_stock')
             self.pool.get('stock.location').check_access_rule(cr, uid, [location_id], 'read', context=context)
-        except (orm.except_orm, ValueError):
+        except (AccessError, ValueError):
             location_id = False
         return location_id
 
@@ -575,7 +562,7 @@ class mrp_production(osv.osv):
         'date_finished': fields.datetime('End Date', select=True, readonly=True, copy=False),
         'bom_id': fields.many2one('mrp.bom', 'Bill of Material', readonly=True, states={'draft': [('readonly', False)]},
             help="Bill of Materials allow you to define the list of required raw materials to make a finished product."),
-        'routing_id': fields.many2one('mrp.routing', string='Routing', on_delete='set null', readonly=True, states={'draft': [('readonly', False)]},
+        'routing_id': fields.many2one('mrp.routing', string='Work Order Operations', on_delete='set null', readonly=True, states={'draft': [('readonly', False)]},
             help="The list of operations (list of work centers) to produce the finished product. The routing is mainly used to compute work center costs during operations and to plan future loads on work centers based on production plannification."),
         'move_prod_id': fields.many2one('stock.move', 'Product Move', readonly=True, copy=False),
         'move_lines': fields.one2many('stock.move', 'raw_material_production_id', 'Products to Consume',
@@ -595,23 +582,18 @@ class mrp_production(osv.osv):
                 ('ready', 'Ready to Produce'), ('in_production', 'Production Started'), ('done', 'Done')],
             string='Status', readonly=True,
             track_visibility='onchange', copy=False,
-            help="When the production order is created the status is set to 'Draft'.\n\
-                If the order is confirmed the status is set to 'Waiting Goods'.\n\
-                If any exceptions are there, the status is set to 'Picking Exception'.\n\
-                If the stock is available then the status is set to 'Ready to Produce'.\n\
-                When the production gets started then the status is set to 'In Production'.\n\
-                When the production is over, the status is set to 'Done'."),
-        'hour_total': fields.function(_production_calc, type='float', string='Total Hours', multi='workorder', store={
-            _name: (lambda self, cr, uid, ids, c={}: ids, ['workcenter_lines'], 40),
-            'mrp.production.workcenter.line': (_get_workcenter_line, ['hour', 'cycle'], 40),
-        }),
-        'cycle_total': fields.function(_production_calc, type='float', string='Total Cycles', multi='workorder', store={
-            _name: (lambda self, cr, uid, ids, c={}: ids, ['workcenter_lines'], 40),
-            'mrp.production.workcenter.line': (_get_workcenter_line, ['hour', 'cycle'], 40),
-        }),
+            help="When the production order is created the status is set to 'Draft'.\n"
+                "If the order is confirmed the status is set to 'Waiting Goods.\n"
+                "If any exceptions are there, the status is set to 'Picking Exception.\n"
+                "If the stock is available then the status is set to 'Ready to Produce.\n"
+                "When the production gets started then the status is set to 'In Production.\n"
+                "When the production is over, the status is set to 'Done'."),
+        'hour_total': fields.function(_production_calc, type='float', string='Total Hours', multi='workorder', store=True),
+        'cycle_total': fields.function(_production_calc, type='float', string='Total Cycles', multi='workorder', store=True),
         'user_id': fields.many2one('res.users', 'Responsible'),
         'company_id': fields.many2one('res.company', 'Company', required=True),
-        'ready_production': fields.function(_moves_assigned, type='boolean', store={'stock.move': (_mrp_from_move, ['state'], 10)}),
+        'ready_production': fields.function(_moves_assigned, type='boolean', string="Ready for production", store={'stock.move': (_mrp_from_move, ['state'], 10)}),
+        'product_tmpl_id': fields.related('product_id', 'product_tmpl_id', type='many2one', relation='product.template', string='Product'),
     }
 
     _defaults = {
@@ -620,7 +602,7 @@ class mrp_production(osv.osv):
         'date_planned': lambda *a: time.strftime('%Y-%m-%d %H:%M:%S'),
         'product_qty': lambda *a: 1.0,
         'user_id': lambda self, cr, uid, c: uid,
-        'name': lambda self, cr, uid, context: self.pool['ir.sequence'].get(cr, uid, 'mrp.production', context=context) or '/',
+        'name': lambda self, cr, uid, context: self.pool['ir.sequence'].next_by_code(cr, uid, 'mrp.production', context=context) or '/',
         'company_id': lambda self, cr, uid, c: self.pool.get('res.company')._company_default_get(cr, uid, 'mrp.production', context=c),
         'location_src_id': _src_id_default,
         'location_dest_id': _dest_id_default
@@ -642,10 +624,18 @@ class mrp_production(osv.osv):
         (_check_qty, 'Order quantity cannot be negative or zero!', ['product_qty']),
     ]
 
+    def create(self, cr, uid, values, context=None):
+        if context is None:
+            context = {}
+        product_obj = self.pool.get('product.product')
+        if 'product_id' in values and not 'product_uom' in values:
+            values['product_uom'] = product_obj.browse(cr, uid, values.get('product_id'), context=context).uom_id.id
+        return super(mrp_production, self).create(cr, uid, values, context=context)
+
     def unlink(self, cr, uid, ids, context=None):
         for production in self.browse(cr, uid, ids, context=context):
             if production.state not in ('draft', 'cancel'):
-                raise osv.except_osv(_('Invalid Action!'), _('Cannot delete a manufacturing order in state \'%s\'.') % production.state)
+                raise UserError(_('Cannot delete a manufacturing order in state \'%s\'.') % production.state)
         return super(mrp_production, self).unlink(cr, uid, ids, context=context)
 
     def location_id_change(self, cr, uid, ids, src, dest, context=None):
@@ -672,7 +662,8 @@ class mrp_production(osv.osv):
                 'bom_id': False,
                 'routing_id': False,
                 'product_uos_qty': 0,
-                'product_uos': False
+                'product_uos': False,
+                'product_tmpl_id': False
             }}
         bom_obj = self.pool.get('mrp.bom')
         product = self.pool.get('product.product').browse(cr, uid, product_id, context=context)
@@ -682,7 +673,7 @@ class mrp_production(osv.osv):
             bom_point = bom_obj.browse(cr, uid, bom_id, context=context)
             routing_id = bom_point.routing_id.id or False
         product_uom_id = product.uom_id and product.uom_id.id or False
-        result['value'] = {'product_uos_qty': 0, 'product_uos': False, 'product_uom': product_uom_id, 'bom_id': bom_id, 'routing_id': routing_id}
+        result['value'] = {'product_uos_qty': 0, 'product_uos': False, 'product_uom': product_uom_id, 'bom_id': bom_id, 'routing_id': routing_id, 'product_tmpl_id': product.product_tmpl_id}
         if product.uos_id.id:
             result['value']['product_uos_qty'] = product_qty * product.uos_coeff
             result['value']['product_uos'] = product.uos_id.id
@@ -719,7 +710,7 @@ class mrp_production(osv.osv):
                 self.write(cr, uid, [production.id], {'bom_id': bom_id, 'routing_id': routing_id})
 
         if not bom_id:
-            raise osv.except_osv(_('Error!'), _("Cannot find a bill of material for this product."))
+            raise UserError(_("Cannot find a bill of material for this product."))
 
         # get components and workcenter_lines from BoM structure
         factor = uom_obj._compute_qty(cr, uid, production.product_uom.id, production.product_qty, bom_point.product_uom.id)
@@ -1332,5 +1323,3 @@ class mrp_production_product_line(osv.osv):
         'product_uos': fields.many2one('product.uom', 'Product UOS'),
         'production_id': fields.many2one('mrp.production', 'Production Order', select=True),
     }
-
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

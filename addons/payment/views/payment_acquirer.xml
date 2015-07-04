@@ -21,6 +21,7 @@
                                 <field name="website_published"/>
                                 <field name="environment"/>
                                 <field name="validation"/>
+                                <field name="auto_confirm"/>
                             </group>
                             <group>
                                 <field name="fees_active"/>
@@ -34,30 +35,47 @@
                                     attrs="{'invisible': [('fees_active', '=', False)]}"/>
                             </group>
                         </group>
-                        <group name="acquirer_display">
-                            <field name="pre_msg"/>
-                            <field name="post_msg"/>
-                            <label for="view_template_id"/>
-                            <div>
-                                <field name="view_template_id" nolabel="1"/>
-                                <div>
-                                    This template renders the acquirer button with all necessary values.
-                                    It is be rendered with qWeb with the following evaluation context:
-                                    <ul>
-                                        <li>tx_url: transaction URL to post the form</li>
-                                        <li>acquirer: payment.acquirer browse record</li>
-                                        <li>user: current user browse record</li>
-                                        <li>reference: the transaction reference number</li>
-                                        <li>currency: the transaction currency browse record</li>
-                                        <li>amount: the transaction amount, a float</li>
-                                        <li>partner: the buyer partner browse record, not necessarily set</li>
-                                        <li>partner_values: specific values about the buyer, for example coming from a shipping form</li>
-                                        <li>tx_values: transaction values</li>
-                                        <li>context: the current context dictionary</li>
-                                    </ul>
-                                </div>
-                            </div>
-                        </group>
+                        <notebook>
+                            <page string="Message">
+                                <group>
+                                    <field name="pre_msg"/>
+                                    <field name="post_msg"/>
+                                </group>
+                            </page>
+                            <page string="Status">
+                                <group>
+                                    <field name="pending_msg"/>
+                                    <field name="done_msg"/>
+                                    <field name="cancel_msg"/>
+                                    <field name="error_msg"/>
+                                </group>
+                            </page>
+                            <page string="Configuration">
+                                <group name="acquirer_display">
+                                    <label for="view_template_id"/>
+                                    <div>
+                                        <field name="view_template_id" nolabel="1"/>
+                                        <div>
+                                            This template renders the acquirer button with all necessary values.
+                                            It is be rendered with qWeb with the following evaluation context:
+                                            <ul>
+                                                <li>tx_url: transaction URL to post the form</li>
+                                                <li>acquirer: payment.acquirer browse record</li>
+                                                <li>user: current user browse record</li>
+                                                <li>reference: the transaction reference number</li>
+                                                <li>currency: the transaction currency browse record</li>
+                                                <li>amount: the transaction amount, a float</li>
+                                                <li>partner: the buyer partner browse record, not necessarily set</li>
+                                                <li>partner_values: specific values about the buyer, for example coming from a shipping form</li>
+                                                <li>tx_values: transaction values</li>
+                                                <li>context: the current context dictionary</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                            <field name="registration_view_template_id"/>
+                                </group>
+                            </page>
+                        </notebook>
                     </sheet>
                 </form>
             </field>
@@ -68,6 +86,7 @@
             <field name="model">payment.acquirer</field>
             <field name="arch" type="xml">
                 <tree string="Payment Acquirers">
+                    <field name="sequence" widget="handle"/>
                     <field name="name"/>
                     <field name="provider"/>
                     <field name="website_published"/>
@@ -186,6 +205,34 @@
             id='payment_transaction_menu'
             parent='root_payment_menu'
             sequence='20' />
+
+        <!-- Payment Methods -->
+        <record model='ir.ui.view' id='payment_method_tree_view'>
+            <field name='name'>payment.method.tree</field>
+            <field name='model'>payment.method</field>
+            <field name='arch' type='xml'>
+                <tree string='Payment Methods' create='false' editable='bottom'>
+                    <field name="name"/>
+                    <field name="active"/>
+                    <field name='partner_id' />
+                    <field name='acquirer_id' readonly='1'/>
+                    <field name='acquirer_ref' readonly='1'/>
+                </tree>
+            </field>
+        </record>
+
+
+        <record model='ir.actions.act_window' id='payment_method_act'>
+            <field name='name'>Saved Payment Data</field>
+            <field name='res_model'>payment.method</field>
+            <field name='view_type'>form</field>
+            <field name='view_mode'>tree</field>
+        </record>
+
+        <menuitem
+            action='payment_method_act'
+            id='payment_method_menu'
+            parent='root_payment_menu' />
 
     </data>
 </openerp>

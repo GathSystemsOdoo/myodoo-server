@@ -16,7 +16,7 @@ import psycopg2
 
 import openerp
 from openerp import SUPERUSER_ID
-from openerp.exceptions import Warning
+from openerp.exceptions import UserError
 import openerp.release
 import openerp.sql_db
 import openerp.tools
@@ -137,7 +137,7 @@ def exp_drop(db_name):
         try:
             cr.execute('DROP DATABASE "%s"' % db_name)
         except Exception, e:
-            _logger.error('DROP DB: %s failed:\n%s', db_name, e)
+            _logger.info('DROP DB: %s failed:\n%s', db_name, e)
             raise Exception("Couldn't drop database %s: %s" % (db_name, e))
         else:
             _logger.info('DROP DB: %s', db_name)
@@ -147,9 +147,9 @@ def exp_drop(db_name):
         shutil.rmtree(fs)
     return True
 
-def exp_dump(db_name):
+def exp_dump(db_name, format):
     with tempfile.TemporaryFile() as t:
-        dump_db(db_name, t)
+        dump_db(db_name, t, format)
         t.seek(0)
         return t.read().encode('base64')
 
@@ -175,12 +175,6 @@ def dump_db(db_name, stream, backup_format='zip'):
     _logger.info('DUMP DB: %s format %s', db_name, backup_format)
 
     cmd = ['pg_dump', '--no-owner']
-    if openerp.tools.config['db_user']:
-        cmd.append('--username=' + openerp.tools.config['db_user'])
-    if openerp.tools.config['db_host']:
-        cmd.append('--host=' + openerp.tools.config['db_host'])
-    if openerp.tools.config['db_port']:
-        cmd.append('--port=' + str(openerp.tools.config['db_port']))
     cmd.append(db_name)
 
     if backup_format == 'zip':
@@ -222,7 +216,7 @@ def exp_restore(db_name, data, copy=False):
 def restore_db(db, dump_file, copy=False):
     assert isinstance(db, basestring)
     if exp_db_exist(db):
-        _logger.warning('RESTORE DB: %s already exists', db)
+        _logger.info('RESTORE DB: %s already exists', db)
         raise Exception("Database already exists")
 
     _create_empty_database(db)
@@ -248,12 +242,6 @@ def restore_db(db, dump_file, copy=False):
             pg_args = ['--no-owner', dump_file]
 
         args = []
-        if openerp.tools.config['db_user']:
-            args.append('--username=' + openerp.tools.config['db_user'])
-        if openerp.tools.config['db_host']:
-            args.append('--host=' + openerp.tools.config['db_host'])
-        if openerp.tools.config['db_port']:
-            args.append('--port=' + str(openerp.tools.config['db_port']))
         args.append('--dbname=' + db)
         pg_args = args + pg_args
 
@@ -290,7 +278,7 @@ def exp_rename(old_name, new_name):
             cr.execute('ALTER DATABASE "%s" RENAME TO "%s"' % (old_name, new_name))
             _logger.info('RENAME DB: %s -> %s', old_name, new_name)
         except Exception, e:
-            _logger.error('RENAME DB: %s -> %s failed:\n%s', old_name, new_name, e)
+            _logger.info('RENAME DB: %s -> %s failed:\n%s', old_name, new_name, e)
             raise Exception("Couldn't rename database %s to %s: %s" % (old_name, new_name, e))
 
     old_fs = openerp.tools.config.filestore(old_name)
@@ -350,4 +338,3 @@ def exp_migrate_databases(databases):
         openerp.tools.config['update']['base'] = True
         openerp.modules.registry.RegistryManager.new(db, force_demo=False, update_module=True)
     return True
-

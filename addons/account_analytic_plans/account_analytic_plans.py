@@ -1,30 +1,13 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-2010 Tiny SPRL (<http://tiny.be>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 import time
 from lxml import etree
 
 from openerp.osv import fields, osv
-from openerp import tools
+from openerp import tools, api
 from openerp.tools.translate import _
+from openerp.exceptions import UserError
 
 class one2many_mod2(fields.one2many):
     def get(self, cr, obj, ids, name, user=None, offset=0, context=None, values=None):
@@ -168,7 +151,7 @@ class account_analytic_plan_instance(osv.osv):
         if context is None:
             context = {}
         wiz_id = self.pool.get('ir.actions.act_window').search(cr, uid, [("name","=","analytic.plan.create.model.action")], context=context)
-        res = super(account_analytic_plan_instance,self).fields_view_get(cr, uid, view_id, view_type, context, toolbar=toolbar, submenu=submenu)
+        res = super(account_analytic_plan_instance,self).fields_view_get(cr, uid, view_id=view_id, view_type=view_type, context=context, toolbar=toolbar, submenu=submenu)
         journal_obj = self.pool.get('account.journal')
         analytic_plan_obj = self.pool.get('account.analytic.plan')
         if (res['type']=='form'):
@@ -215,7 +198,7 @@ class account_analytic_plan_instance(osv.osv):
 
             pids = ana_plan_instance_obj.search(cr, uid, [('name','=',vals['name']), ('code','=',vals['code']), ('plan_id','<>',False)], context=context)
             if pids:
-                raise osv.except_osv(_('Error!'), _('A model with this name and code already exists.'))
+                raise UserError(_('A model with this name and code already exists.'))
 
             res = acct_anal_plan_line_obj.search(cr, uid, [('plan_id','=',journal.plan_id.id)], context=context)
             for i in res:
@@ -228,11 +211,11 @@ class account_analytic_plan_instance(osv.osv):
                             if acct_anal_acct.search(cr, uid, [('parent_id', 'child_of', [item.root_analytic_id.id]), ('id', '=', tempo[2]['analytic_account_id'])], context=context):
                                 total_per_plan += tempo[2]['rate']
                 if total_per_plan < item.min_required or total_per_plan > item.max_required:
-                    raise osv.except_osv(_('Error!'),_('The total should be between %s and %s.') % (str(item.min_required), str(item.max_required)))
+                    raise UserError(_('The total should be between %s and %s.') % (str(item.min_required), str(item.max_required)))
 
         return super(account_analytic_plan_instance, self).create(cr, uid, vals, context=context)
 
-    def write(self, cr, uid, ids, vals, context=None, check=True, update_check=True):
+    def write(self, cr, uid, ids, vals, context=None):
         if context is None:
             context = {}
         this = self.browse(cr, uid, ids[0], context=context)
@@ -302,8 +285,8 @@ class account_invoice_line(osv.osv):
         res ['analytics_id'] = line.analytics_id and line.analytics_id.id or False
         return res
 
-    def product_id_change(self, cr, uid, ids, product, uom_id, qty=0, name='', type='out_invoice', partner_id=False, fposition_id=False, price_unit=False, currency_id=False, company_id=None, context=None):
-        res_prod = super(account_invoice_line, self).product_id_change(cr, uid, ids, product, uom_id, qty, name, type, partner_id, fposition_id, price_unit, currency_id, company_id=company_id, context=context)
+    def product_id_change(self, cr, uid, ids, product, uom_id, qty=0, name='', type='out_invoice', partner_id=False, fposition_id=False, price_unit=False, currency_id=False, company_id=None, date_invoice=None, context=None):
+        res_prod = super(account_invoice_line, self).product_id_change(cr, uid, ids, product, uom_id, qty, name, type, partner_id, fposition_id, price_unit, currency_id, company_id=company_id, date_invoice=date_invoice, context=context)
         rec = self.pool.get('account.analytic.default').account_get(cr, uid, product, partner_id, uid, time.strftime('%Y-%m-%d'), context=context)
         if rec and rec.analytics_id:
             res_prod['value'].update({'analytics_id': rec.analytics_id.id})
@@ -332,7 +315,7 @@ class account_move_line(osv.osv):
         for line in self.browse(cr, uid, ids, context=context):
            if line.analytics_id:
                if not line.journal_id.analytic_journal_id:
-                   raise osv.except_osv(_('No Analytic Journal!'),_("You have to define an analytic journal on the '%s' journal.") % (line.journal_id.name,))
+                   raise UserError(_("You have to define an analytic journal on the '%s' journal.") % (line.journal_id.name,))
 
                toremove = analytic_line_obj.search(cr, uid, [('move_id','=',line.id)], context=context)
                if toremove:
@@ -357,19 +340,13 @@ class account_move_line(osv.osv):
                    analytic_line_obj.create(cr, uid, al_vals, context=context)
         return True
 
-    def fields_view_get(self, cr, uid, view_id=None, view_type='form', context=None, toolbar=False, submenu=False):
-        if context is None:
-            context = {}
-        result = super(account_move_line, self).fields_view_get(cr, uid, view_id, view_type, context, toolbar=toolbar, submenu=submenu)
-        return result
-
 
 class account_invoice(osv.osv):
     _name = "account.invoice"
     _inherit = "account.invoice"
 
-    def line_get_convert(self, cr, uid, x, part, date, context=None):
-        res=super(account_invoice,self).line_get_convert(cr, uid, x, part, date, context=context)
+    def line_get_convert(self, cr, uid, x, part, context=None):
+        res=super(account_invoice,self).line_get_convert(cr, uid, x, part, context=context)
         res['analytics_id'] = x.get('analytics_id', False)
         return res
 
@@ -398,7 +375,7 @@ class account_invoice(osv.osv):
                 ctx.update({'date': inv.date_invoice})
                 amount_calc = cur_obj.compute(cr, uid, inv.currency_id.id, company_currency, il['price'], context=ctx) * sign
                 qty = il['quantity']
-                il['analytic_lines'] = []
+                il['analytic_line_ids'] = []
                 for line2 in obj_move_line.account_ids:
                     amt = amount_calc * (line2.rate/100)
                     qtty = qty* (line2.rate/100)
@@ -414,7 +391,7 @@ class account_invoice(osv.osv):
                         'journal_id': self._get_journal_analytic(cr, uid, inv.type),
                         'ref': ref,
                     }
-                    il['analytic_lines'].append((0, 0, al_vals))
+                    il['analytic_line_ids'].append((0, 0, al_vals))
         return iml
 
 
@@ -450,36 +427,33 @@ class sale_order_line(osv.osv):
                     inv_line_obj.write(cr, uid, [line.id], {'analytics_id': rec.analytics_id.id}, context=context)
         return create_ids
 
-
-
+# TODO : migrate module to new API
+from openerp import fields
 class account_bank_statement(osv.osv):
     _inherit = "account.bank.statement"
     _name = "account.bank.statement"
 
-    def _prepare_bank_move_line(self, cr, uid, st_line, move_id, amount, company_currency_id, context=None):
-        result = super(account_bank_statement,self)._prepare_bank_move_line(cr, uid, st_line, 
-            move_id, amount, company_currency_id, context=context)
-        result['analytics_id'] = st_line.analytics_id.id
-        return result
-
-    def button_confirm_bank(self, cr, uid, ids, context=None):
-        super(account_bank_statement,self).button_confirm_bank(cr, uid, ids, context=context)
-        for st in self.browse(cr, uid, ids, context=context):
+    @api.multi
+    def button_confirm_bank(self):
+        super(account_bank_statement, self).button_confirm_bank()
+        for st in self:
             for st_line in st.line_ids:
                 if st_line.analytics_id:
                     if not st.journal_id.analytic_journal_id:
-                        raise osv.except_osv(_('No Analytic Journal!'),_("You have to define an analytic journal on the '%s' journal.") % (st.journal_id.name,))
+                        raise UserError(_("You have to define an analytic journal on the '%s' journal.") % (st.journal_id.name,))
                 if not st_line.amount:
                     continue
         return True
 
 
-
 class account_bank_statement_line(osv.osv):
     _inherit = "account.bank.statement.line"
     _name = "account.bank.statement.line"
-    _columns = {
-        'analytics_id': fields.many2one('account.analytic.plan.instance', 'Analytic Distribution'),
-    }
 
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:
+    analytics_id = fields.Many2one('account.analytic.plan.instance', string='Analytic Distribution')
+
+    def _prepare_move_line(self, move, amount):
+        result = super(account_bank_statement, self)._prepare_bank_move_line(move, amount)
+        result['analytics_id'] = self.analytics_id.id
+        return result
+

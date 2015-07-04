@@ -1,23 +1,5 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-2010 Tiny SPRL (<http://tiny.be>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 import time
 
@@ -40,6 +22,7 @@ class final_invoice_create(osv.osv_memory):
         'name': fields.boolean('Log of Activity', help='Display detail of work in the invoice line.'),
         'price': fields.boolean('Cost', help='Display cost of the item you reinvoice'),
         'product': fields.many2one('product.product', 'Product', help='The product that will be used to invoice the remaining amount'),
+        'group_by_partner': fields.boolean('Group by Partner', help="If this box is checked, the system will group invoices by customer."),
     }
 
     def do_create(self, cr, uid, ids, context=None):
@@ -57,6 +40,3 @@ class final_invoice_create(osv.osv_memory):
         act_win['domain'] = [('id','in',invs),('type','=','out_invoice')]
         act_win['name'] = _('Invoices')
         return act_win
-
-
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

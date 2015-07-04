@@ -7,7 +7,6 @@
             <field name="model">res.bank</field>
             <field name="arch" type="xml">
                 <form string="Bank">
-                  <sheet>
                     <group col="4">
                         <field name="name"/>
                         <field name="bic"/>
@@ -33,7 +32,6 @@
                             <field name="active"/>
                         </group>
                     </group>
-                  </sheet>
                 </form>
             </field>
         </record>
@@ -61,7 +59,14 @@
               </p>
             </field>
         </record>
-        <menuitem action="action_res_bank_form" id="menu_action_res_bank_form" parent="base.menu_config_address_book" sequence="11" groups="base.group_no_one"/>
+
+        <menuitem  id="menu_config_bank_accounts"
+                    name="Bank Accounts"
+                    parent="base.menu_config_address_book"
+                    sequence="6"
+                    groups="base.group_no_one"/>
+
+        <menuitem action="action_res_bank_form" id="menu_action_res_bank_form" parent="base.menu_config_bank_accounts" sequence="1" groups="base.group_no_one"/>
 
 
         <record id="view_partner_bank_type_form" model="ir.ui.view">
@@ -99,26 +104,30 @@
                         <field name="state"/>
                         <field name="acc_number" placeholder="Account Number"/>
                         <field name="company_id" groups="base.group_multi_company" on_change="onchange_company_id(company_id)"
-                            invisible="context.get('company_hide', True)" widget="selection"/>
+                            invisible="context.get('company_hide', True)" options="{'no_create': True}"/>
                         <field name="footer" invisible="context.get('footer_hide', True)"/>
                     </group>
                     <group>
-                        <group name="owner" string="Bank Account Owner">
-                            <field name="partner_id" on_change="onchange_partner_id(partner_id)"/>
-                            <label for="street" string="Address"/>
+                        <group name="owner" string="Account Owner">
+                            <label for="partner_id"/>
                             <div>
-                                <field name="owner_name" placeholder="Name"/>
-                                <field name="street" placeholder="Street"/>
                                 <div>
-                                    <field name="zip" class="oe_inline" placeholder="ZIP"/>
-                                    <field name="city" class="oe_inline" placeholder="City"/>
+                                    <field name="partner_id" on_change="onchange_partner_id(partner_id)"/>
                                 </div>
-                                <field name="state_id" placeholder="State" options='{"no_open": True}'/>
-                                <field name="country_id" placeholder="Country" options='{"no_open": True, "no_create": True}'/>
+                                <div>
+                                    <field name="street" placeholder="Street"/>
+                                    <div>
+                                        <field name="zip" class="oe_inline" placeholder="ZIP"/>
+                                        <field name="city" class="oe_inline" placeholder="City"/>
+                                    </div>
+                                    <div>
+                                        <field name="state_id" placeholder="State" options='{"no_open": True}'/>
+                                        <field name="country_id" placeholder="Country" options='{"no_open": True, "no_create": True}'/>
+                                    </div>
+                                </div>
                             </div>
                         </group>
-                        <group name="bank" string="Information About the Bank">
-                            <field name="bank" on_change="onchange_bank_id(bank)"/>
+                        <group name="bank" string="Bank Information">
                             <field name="bank_name" attrs="{'required': [('company_id','&lt;&gt;',False)]}"/>
                             <field name="bank_bic" placeholder="e.g. GEBABEBB" />
                         </group>
@@ -168,14 +177,14 @@
               </p>
               <p>
                 If you use the accounting application of Odoo, journals and accounts will be created automatically based on these data.
-              </p>  
+              </p>
             </field>
         </record>
         <menuitem action="action_res_partner_bank_account_form"
             id="menu_action_res_partner_bank_form"
-            parent="base.menu_config_address_book"
+            parent="base.menu_config_bank_accounts"
             groups="base.group_no_one"
-            sequence="9"/>
+            sequence="2"/>
 
 
         <record id="action_res_partner_bank_type_form" model="ir.actions.act_window">
@@ -186,9 +195,9 @@
         </record>
         <menuitem action="action_res_partner_bank_type_form"
             id="menu_action_res_partner_bank_typeform"
-            parent="base.menu_config_address_book"
+            parent="base.menu_config_bank_accounts"
             groups="base.group_no_one"
-            sequence="15"/>
+            sequence="3"/>
 
 
 

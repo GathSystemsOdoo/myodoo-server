@@ -1,30 +1,12 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-2010 Tiny SPRL (<http://tiny.be>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from openerp.osv import fields, osv
 from openerp.tools.translate import _
 from openerp.tools.safe_eval import safe_eval as eval
 import openerp.addons.decimal_precision as dp
 from openerp.tools.float_utils import float_round
-from openerp.exceptions import except_orm
+from openerp.exceptions import UserError
 
 class product_product(osv.osv):
     _inherit = "product.product"
@@ -222,7 +204,6 @@ class product_product(osv.osv):
     _columns = {
         'reception_count': fields.function(_stock_move_count, string="Receipt", type='integer', multi='pickings'),
         'delivery_count': fields.function(_stock_move_count, string="Delivery", type='integer', multi='pickings'),
-        'qty_available_text': fields.function(_product_available_text, type='char'),
         'qty_available': fields.function(_product_available, multi='qty_available',
             type='float', digits_compute=dp.get_precision('Product Unit of Measure'),
             string='Quantity On Hand',
@@ -237,6 +218,7 @@ class product_product(osv.osv):
                  "or any of its children.\n"
                  "Otherwise, this includes goods stored in any Stock Location "
                  "with 'internal' type."),
+        'qty_available2': fields.related('qty_available', type="float", relation="product.product", string="On Hand"),
         'virtual_available': fields.function(_product_available, multi='qty_available',
             type='float', digits_compute=dp.get_precision('Product Unit of Measure'),
             string='Forecast Quantity',
@@ -330,6 +312,18 @@ class product_product(osv.osv):
         templ_ids = list(set([x.product_tmpl_id.id for x in self.browse(cr, uid, ids, context=context)]))
         return template_obj.action_view_routes(cr, uid, templ_ids, context=context)
 
+    def onchange_tracking(self, cr, uid, ids, tracking, context=None):
+        if not tracking or tracking == 'none':
+            return {}
+        unassigned_quants = self.pool['stock.quant'].search_count(cr, uid, [('product_id','in', ids), ('lot_id','=', False), ('location_id.usage','=', 'internal')], context=context)
+        if unassigned_quants:
+            return {'warning' : {
+                    'title': _('Warning!'),
+                    'message' : _("You have products in stock that have no lot number.  You can assign serial numbers by doing an inventory.  ")
+            }}
+        return {}
+
+
 class product_template(osv.osv):
     _name = 'product.template'
     _inherit = 'product.template'
@@ -375,7 +369,7 @@ class product_template(osv.osv):
 
     _columns = {
         'type': fields.selection([('product', 'Stockable Product'), ('consu', 'Consumable'), ('service', 'Service')], 'Product Type', required=True, help="Consumable: Will not imply stock management for this product. \nStockable product: Will imply stock management for this product."),
-        'qty_available_text': fields.function(_product_available_text, type='char'),
+        'qty_available2': fields.related('qty_available', type="float", relation="product.template", string="On Hand"),
         'property_stock_procurement': fields.property(
             type='many2one',
             relation='stock.location',
@@ -398,10 +392,7 @@ class product_template(osv.osv):
         'loc_rack': fields.char('Rack', size=16),
         'loc_row': fields.char('Row', size=16),
         'loc_case': fields.char('Case', size=16),
-        'track_incoming': fields.boolean('Track Incoming Lots', help="Forces to specify a Serial Number for all moves containing this product and coming from a Supplier Location"),
-        'track_outgoing': fields.boolean('Track Outgoing Lots', help="Forces to specify a Serial Number for all moves containing this product and going to a Customer Location"),
-        'track_all': fields.boolean('Full Lots Traceability', help="Forces to specify a Serial Number on each and every operation related to this product"),
-        
+        'tracking': fields.selection(selection=[('serial', 'By Unique Serial Number'), ('lot', 'By Lots'), ('none', 'No Tracking')], string="Tracking", required=True),
         # sum of product variant qty
         # 'reception_count': fields.function(_product_available, multi='qty_available',
         #     fnct_search=_search_product_quantity, type='float', string='Quantity On Hand'),
@@ -410,7 +401,7 @@ class product_template(osv.osv):
         'qty_available': fields.function(_product_available, multi='qty_available', digits_compute=dp.get_precision('Product Unit of Measure'),
             fnct_search=_search_product_quantity, type='float', string='Quantity On Hand'),
         'virtual_available': fields.function(_product_available, multi='qty_available', digits_compute=dp.get_precision('Product Unit of Measure'),
-            fnct_search=_search_product_quantity, type='float', string='Quantity Available'),
+            fnct_search=_search_product_quantity, type='float', string='Forecasted Quantity'),
         'incoming_qty': fields.function(_product_available, multi='qty_available', digits_compute=dp.get_precision('Product Unit of Measure'),
             fnct_search=_search_product_quantity, type='float', string='Incoming'),
         'outgoing_qty': fields.function(_product_available, multi='qty_available', digits_compute=dp.get_precision('Product Unit of Measure'),
@@ -422,6 +413,7 @@ class product_template(osv.osv):
 
     _defaults = {
         'sale_delay': 7,
+        'tracking': 'none',
     }
 
     def action_view_routes(self, cr, uid, ids, context=None):
@@ -438,6 +430,12 @@ class product_template(osv.osv):
         result['domain'] = "[('id','in',[" + ','.join(map(str, route_ids)) + "])]"
         return result
 
+    def onchange_tracking(self, cr, uid, ids, tracking, context=None):
+        if not tracking:
+            return {}
+        product_product = self.pool['product.product']
+        variant_ids = product_product.search(cr, uid, [('product_tmpl_id', 'in', ids)], context=context)
+        return product_product.onchange_tracking(cr, uid, variant_ids, tracking, context=context)
 
     def _get_products(self, cr, uid, ids, context=None):
         products = []
@@ -490,7 +488,7 @@ class product_template(osv.osv):
                 old_uom = product.uom_id
                 if old_uom != new_uom:
                     if self.pool.get('stock.move').search(cr, uid, [('product_id', 'in', [x.id for x in product.product_variant_ids]), ('state', '=', 'done')], limit=1, context=context):
-                        raise except_orm(_('Warning'), _("You can not change the unit of measure of a product that has already been used in a done stock move. If you need to change the unit of measure, you may deactivate this product."))
+                        raise UserError(_("You can not change the unit of measure of a product that has already been used in a done stock move. If you need to change the unit of measure, you may deactivate this product."))
         return super(product_template, self).write(cr, uid, ids, vals, context=context)
 
 
@@ -561,6 +559,3 @@ class product_category(osv.osv):
         'removal_strategy_id': fields.many2one('product.removal', 'Force Removal Strategy', help="Set a specific removal strategy that will be used regardless of the source location for this product category"),
         'total_route_ids': fields.function(calculate_total_routes, relation='stock.location.route', type='many2many', string='Total routes', readonly=True),
     }
-
-
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

@@ -1,23 +1,5 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-2010 Tiny SPRL (<http://tiny.be>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 
 {
@@ -46,16 +28,19 @@ A synchronization with an internal agenda (Meetings of the CRM module) is also p
 """,
     'depends': ['hr', 'calendar', 'resource'],
     'data': [
+        'data/report_paperformat.xml',
         'security/ir.model.access.csv',
         'security/ir_rule.xml',
         'hr_holidays_workflow.xml',
         'hr_holidays_view.xml',
         'hr_holidays_data.xml',
         'hr_holidays_report.xml',
+        'views/report_hr_holidays_summary.xml',
         'report/hr_holidays_report_view.xml',
         'report/available_holidays_view.xml',
         'wizard/hr_holidays_summary_department_view.xml',
         'wizard/hr_holidays_summary_employees_view.xml',
+        'hr_dashboard.xml',
         ],
     'demo': ['hr_holidays_demo.xml',],
     'qweb': [
@@ -68,4 +53,3 @@ A synchronization with an internal agenda (Meetings of the CRM module) is also p
     'application': True,
     'auto_install': False,
 }
-# vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:
