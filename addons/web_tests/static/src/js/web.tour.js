@@ -246,12 +246,12 @@ Tour.register({
             title:      "remove b",
             waitNot:    '.modal',
             waitFor:    '.oe_list_field_text:contains(aaa)',
-            element:    'tr:has(.oe_list_field_cell:containsExact(bbb)) .oe_list_record_delete button'
+            element:    'tr:has(.oe_list_field_cell:containsExact(bbb)) .oe_list_record_delete'
         },
         {
             title:      "remove e",
             waitNot:    'tr:has(.oe_list_field_cell:containsExact(bbb))',
-            element:    'tr:has(.oe_list_field_cell:containsExact(e)) .oe_list_record_delete button'
+            element:    'tr:has(.oe_list_field_cell:containsExact(e)) .oe_list_record_delete'
         },
 
         // save
@@ -303,7 +303,7 @@ Tour.register({
         },
         {
             title:      "select demo user",
-            element:    '.modal li a:contains(Demo User)',
+            element:    '.modal li:contains(Demo User)',
         },
         {
             title:      "test one2many's line onchange after many2one",
@@ -399,7 +399,7 @@ Tour.register({
         },
         {
             title:      "select an other user",
-            element:    '.oe_application li a:contains(Demo User)',
+            element:    '.ui-autocomplete li:contains(Demo User)',
         },
         {
             title:      "test one2many's line onchange after many2one",
@@ -433,14 +433,14 @@ Tour.register({
         },
         {
             title:      "add a tag",
-            element:    '.ui-autocomplete a:first',
+            element:    '.ui-autocomplete li:first',
         },
 
         // remove record
 
         {
             title:      "delete the last item in the editable list",
-            element:    '.oe_list_record_delete button:visible:last',
+            element:    '.oe_list_record_delete:visible:last',
         },
         {
             title:      "test one2many onchange after delete",

@@ -4,7 +4,7 @@ odoo.define('web.ViewManager', function (require) {
 var ControlPanelMixin = require('web.ControlPanelMixin');
 var core = require('web.core');
 var data = require('web.data');
-var Model = require('web.Model');
+var Model = require('web.DataModel');
 var pyeval = require('web.pyeval');
 var SearchView = require('web.SearchView');
 var Widget = require('web.Widget');
@@ -205,7 +205,7 @@ var ViewManager = Widget.extend(ControlPanelMixin, {
         controller.on("change:title", this, function() {
             if (self.action_manager) {
                 var breadcrumbs = self.action_manager.get_breadcrumbs();
-                self.cp_bus.trigger("update_breadcrumbs", breadcrumbs);
+                self.update_control_panel({breadcrumbs: breadcrumbs}, {clear: false});
             }
         });
         controller.on('view_loaded', this, function () {

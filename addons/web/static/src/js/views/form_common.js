@@ -630,6 +630,12 @@ var FieldInterface = {
         the field to save its value before reading it using get_value(). Must return a promise.
     */
     commit_value: function() {},
+    /*
+        The form view call before_save before save data and if before_save return a deferred, 
+        the form view wait that all deferred are resolve or fail.
+        If the deferred is rejected, the field is invalidate
+    */
+    before_save: function() {},
 };
 
 /**
@@ -692,10 +698,20 @@ var AbstractField = FormWidget.extend(FieldInterface, {
     start: function() {
         this._super();
         this.on("change:value", this, function() {
-            if (! this.no_rerender)
+            if (!this.no_rerender) {
                 this.render_value();
+            }
+            this._toggle_label();
+        });
+        this.on("change:effective_readonly", this, function() {
+            this._toggle_label();
         });
         this.render_value();
+        this._toggle_label();
+    },
+    _toggle_label: function() {
+        var empty = this.get('effective_readonly') && this.is_false();
+        this.$el.toggleClass('o_form_field_empty', empty);
     },
     /**
      * Private. Do not use.

@@ -79,11 +79,9 @@ class MailThread(models.AbstractModel):
     message_unread = fields.Boolean(
         'Unread Messages', compute='_get_message_unread', search='_search_message_unread',
         help="If checked new messages require your attention.")
-    message_summary = fields.Text(
-        'Summary', compute='_get_message_unread',
-        help="Holds the Chatter summary (number of messages, ...). "\
-             "This summary is directly in html format in order to "\
-             "be inserted in kanban views.")
+    message_unread_counter = fields.Integer(
+        'Unread Messages', compute='_get_message_unread',
+        help="Number of unread messages")
 
     @api.multi
     def _get_followers(self):
@@ -152,8 +150,6 @@ class MailThread(models.AbstractModel):
 
     @api.multi
     def _get_message_unread(self):
-        """ Compute the existence of unread message (message_unread) + the kanban
-        summary for unread messages (message_summary) """
         res = dict((res_id, 0) for res_id in self.ids)
 
         # search for unread messages, directly in SQL to improve performances
@@ -166,13 +162,8 @@ class MailThread(models.AbstractModel):
             res[result[0]] += 1
 
         for record in self:
-            record.message_unread = res.get(record.id, 0) >= 1
-            if record.message_unread:
-                record.message_summary = "<span class='oe_kanban_mail_new' title='%(title)s'><i class='fa fa-comments-o'/>%(count)d</span>" % {
-                    'title': '%d %s' % (res[record.id], _('Unread Messages')),
-                    'count': res[record.id]}
-            else:
-                record.message_summary = ''
+            record.message_unread_counter = res.get(record.id, 0)
+            record.message_unread = bool(record.message_unread_counter)
 
     @api.model
     def _search_message_unread(self, operator, operand):
@@ -497,7 +488,7 @@ class MailThread(models.AbstractModel):
         """ When redirecting towards the Inbox, choose which action xml_id has
             to be fetched. This method is meant to be inherited, at least in portal
             because portal users have a different Inbox action than classic users. """
-        return 'mail.action_mail_inbox_feeds'
+        return 'mail.mail_message_action_inbox'
 
     @api.model
     def message_redirect_action(self):
@@ -1839,29 +1830,6 @@ class MailThread(models.AbstractModel):
         ''', (self.ids, self._name, partner_id))
         self.env['mail.notification'].invalidate_cache(['is_read'])
         return True
-
-    @api.model
-    def get_suggested_thread(self, removed_suggested_threads=None):
-        """Return a list of suggested threads, sorted by the numbers of followers"""
-        # TDE HACK: originally by MAT from portal/mail_mail.py but not working until the inheritance graph bug is not solved in trunk
-        # TDE FIXME: relocate in portal when it won't be necessary to reload the hr.employee model in an additional bridge module
-        if 'is_portal' in self.pool['res.groups']._fields:
-            if any(group.is_portal for group in self.env.user.sudo().groups_id):
-                return []
-
-        threads = []
-        if removed_suggested_threads is None:
-            removed_suggested_threads = []
-
-        for thread in self.search([('id', 'not in', removed_suggested_threads), ('message_is_follower', '=', False)]):
-            data = {
-                'id': thread.id,
-                'popularity': len(thread.message_follower_ids),
-                'name': thread.name,
-                'image_small': thread.image_small
-            }
-            threads.append(data)
-        return sorted(threads, key=lambda x: (x['popularity'], x['id']), reverse=True)[:3]
 
     @api.multi
     def message_change_thread(self, new_thread):

@@ -7,7 +7,7 @@ var data = require('web.data');
 var DataExport = require('web.DataExport');
 var formats = require('web.formats');
 var common = require('web.list_common');
-var Model = require('web.Model');
+var Model = require('web.DataModel');
 var pyeval = require('web.pyeval');
 var session = require('web.session');
 var Sidebar = require('web.Sidebar');
@@ -1023,7 +1023,7 @@ ListView.List = Class.extend( /** @lends instance.web.ListView.List# */{
                 $(self).trigger(
                         'selected', [selection.ids, selection.records, ! checked]);
             })
-            .delegate('td.oe_list_record_delete button', 'click', function (e) {
+            .delegate('td.oe_list_record_delete', 'click', function (e) {
                 e.stopPropagation();
                 var $row = $(e.target).closest('tr');
                 $(self).trigger('deleted', [[self.row_id($row)]]);
@@ -1165,7 +1165,7 @@ ListView.List = Class.extend( /** @lends instance.web.ListView.List# */{
             cells.push('<td title="' + column.string + '">&nbsp;</td>');
         });
         if (this.options.deletable) {
-            cells.push('<td class="oe_list_record_delete"><button type="button" style="visibility: hidden"> </button></td>');
+            cells.push('<td class="oe_list_record_delete"></td>');
         }
         cells.unshift('<tr>');
         cells.push('</tr>');

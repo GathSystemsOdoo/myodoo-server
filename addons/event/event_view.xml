@@ -69,7 +69,7 @@
                             <button name="%(event.act_event_registration_from_event)d"
                                 type="action"
                                 class="oe_stat_button oe_event_attendee_button"
-                                icon="fa-github"
+                                icon="fa-users"
                                 help="Register with this event">
                                 <field name="seats_expected" widget="statinfo" string="Attendees"/>
                             </button>
@@ -93,7 +93,7 @@
                             </group>
                         </group>
                         <notebook>
-                            <page string="Registrations">
+                            <page name="registrations" string="Registrations">
                                 <group>
                                     <group>
                                         <field name="auto_confirm" invisible="1"/>

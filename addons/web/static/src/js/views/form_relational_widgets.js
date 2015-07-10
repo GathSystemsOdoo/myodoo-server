@@ -8,7 +8,7 @@ var Dialog = require('web.Dialog');
 var common = require('web.form_common');
 var FormView = require('web.FormView');
 var ListView = require('web.ListView');
-var Model = require('web.Model');
+var Model = require('web.DataModel');
 var session = require('web.session');
 var utils = require('web.utils');
 var ViewManager = require('web.ViewManager');
@@ -284,8 +284,8 @@ var FieldMany2One = common.AbstractField.extend(common.CompletionFieldMixin, com
                     item.action();
                     // Cancel widget blurring, to avoid form blur event
                     self.trigger('focused');
-                    return false;
                 }
+                return false;
             },
             focus: function(e, ui) {
                 e.preventDefault();
@@ -1353,10 +1353,7 @@ var FieldMany2ManyTags = AbstractManyField.extend(common.CompletionFieldMixin, c
                 var newValue = this.many2one.get('value');
                 if(newValue) {
                     this.add_id(newValue);
-                    var self = this;
-                    setTimeout(function() {
-                        self.many2one.$input.val('');
-                    }, 0);
+                    this.many2one.set({'value': false});
                 }
             });
 
