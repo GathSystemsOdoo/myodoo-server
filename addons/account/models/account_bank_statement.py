@@ -284,7 +284,7 @@ class AccountBankStatement(models.Model):
                 additional_domain = [('ref', '=', st_line.name)]
                 match_recs = st_line.get_move_lines_for_reconciliation(limit=1, additional_domain=additional_domain, overlook_partner=True)
                 if match_recs and match_recs[0].partner_id:
-                    st_line.write({'partner_id': match_recs[0].partner_id.name})
+                    st_line.write({'partner_id': match_recs[0].partner_id.id})
 
         # Collect various informations for the reconciliation widget
         notifications = []
@@ -331,7 +331,7 @@ class AccountBankStatementLine(models.Model):
     _order = "statement_id desc, sequence"
     _inherit = ['ir.needaction_mixin']
 
-    name = fields.Char(string='Communication', required=True)
+    name = fields.Char(string='Memo', required=True)
     date = fields.Date(required=True, default=lambda self: self._context.get('date', fields.Date.context_today(self)))
     amount = fields.Monetary(digits=0, currency_field='journal_currency_id')
     journal_currency_id = fields.Many2one('res.currency', related='journal_id.currency_id',
