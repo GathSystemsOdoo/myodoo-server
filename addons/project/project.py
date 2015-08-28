@@ -2,14 +2,12 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from datetime import datetime, date
-from dateutil import relativedelta
 from lxml import etree
 import time
 
 from openerp import api
 from openerp import SUPERUSER_ID
 from openerp import tools
-from openerp.addons.resource.faces import task as Task
 from openerp.osv import fields, osv
 from openerp.tools.translate import _
 from openerp.exceptions import UserError
@@ -23,8 +21,6 @@ class project_task_type(osv.osv):
         'name': fields.char('Stage Name', required=True, translate=True),
         'description': fields.text('Description', translate=True),
         'sequence': fields.integer('Sequence'),
-        'case_default': fields.boolean('Default for New Projects',
-                        help="If you check this field, this stage will be proposed by default on each new project. It will not assign this stage to existing projects."),
         'project_ids': fields.many2many('project.project', 'project_task_type_rel', 'type_id', 'project_id', 'Projects'),
         'legend_priority': fields.char(
             'Priority Management Explanation', translate=True,
@@ -38,8 +34,8 @@ class project_task_type(osv.osv):
         'legend_normal': fields.char(
             'Kanban Ongoing Explanation', translate=True,
             help='Override the default value displayed for the normal state for kanban selection, when the task or issue is in that stage.'),
-        'fold': fields.boolean('Folded in Kanban View',
-                               help='This stage is folded in the kanban view when'
+        'fold': fields.boolean('Folded in Tasks Pipeline',
+                               help='This stage is folded in the kanban view when '
                                'there are no records in that stage to display.'),
     }
 
@@ -119,9 +115,9 @@ class project(osv.osv):
 
     def _get_visibility_selection(self, cr, uid, context=None):
         """ Overriden in portal_project to offer more options """
-        return [('public', _('Public project')),
-                ('employees', _('Internal project: all employees can access')),
-                ('followers', _('Private project: followers Only'))]
+        return [('portal', _('Customer Project: visible in portal if the customer is a follower')),
+                ('employees', _('All Employees Project: all employees can access')),
+                ('followers', _('Private Project: followers only'))]
 
     def attachment_tree_view(self, cr, uid, ids, context):
         task_ids = self.pool.get('project.task').search(cr, uid, [('project_id', 'in', ids)])
@@ -138,6 +134,11 @@ class project(osv.osv):
             'view_id': False,
             'view_mode': 'kanban,tree,form',
             'view_type': 'form',
+            'help': _('''<p class="oe_view_nocontent_create">
+                        Documents are attached to the tasks and issues of your project.</p><p>
+                        Send messages or log internal notes with attachments to link
+                        documents to your project.
+                    </p>'''),
             'limit': 80,
             'context': "{'default_res_model': '%s','default_res_id': %d}" % (self._name, res_id)
         }
@@ -155,8 +156,6 @@ class project(osv.osv):
                  "It enables you to connect projects with budgets, planning, cost and revenue analysis, timesheets on projects, etc.",
             ondelete="cascade", required=True, auto_join=True),
         'label_tasks': fields.char('Use Tasks as', help="Gives label to tasks on project's kanaban view."),
-        'members': fields.many2many('res.users', 'project_user_rel', 'project_id', 'uid', 'Project Members',
-            help="Project's members are users who can have an access to the tasks related to this project.", states={'close':[('readonly',True)], 'cancelled':[('readonly',True)]}),
         'tasks': fields.one2many('project.task', 'project_id', "Task Activities"),
         'resource_calendar_id': fields.many2one('resource.calendar', 'Working Time', help="Timetable working hours to adjust the gantt diagram report", states={'close':[('readonly',True)]} ),
         'type_ids': fields.many2many('project.task.type', 'project_task_type_rel', 'project_id', 'type_id', 'Tasks Stages', states={'close':[('readonly',True)], 'cancelled':[('readonly',True)]}),
@@ -164,17 +163,15 @@ class project(osv.osv):
         'task_ids': fields.one2many('project.task', 'project_id',
                                     domain=[('stage_id.fold', '=', False)]),
         'color': fields.integer('Color Index'),
+        'user_id': fields.many2one('res.users', 'Project Manager'),
         'alias_id': fields.many2one('mail.alias', 'Alias', ondelete="restrict", required=True,
-                                    help="Internal email associated with this project. Incoming emails are automatically synchronized"
+                                    help="Internal email associated with this project. Incoming emails are automatically synchronized "
                                          "with Tasks (or optionally Issues if the Issue Tracker module is installed)."),
         'alias_model': fields.selection(_alias_models, "Alias Model", select=True, required=True,
                                         help="The kind of document created when an email is received on this project's email alias"),
         'privacy_visibility': fields.selection(_visibility_selection, 'Privacy / Visibility', required=True,
             help="Holds visibility of the tasks or issues that belong to the current project:\n"
-                    "- Public: everybody sees everything; if portal is activated, portal users\n"
-                    "   see all tasks or issues; if anonymous portal is activated, visitors\n"
-                    "   see all tasks or issues\n"
-                    "- Portal (only available if Portal is installed): employees see everything;\n"
+                    "- Portal : employees see everything;\n"
                     "   if portal is activated, portal users see the tasks or issues followed by\n"
                     "   them or by someone of their company\n"
                     "- Employees Only: employees see all tasks or issues\n"
@@ -189,20 +186,25 @@ class project(osv.osv):
                                   'Status', required=True, copy=False),
         'doc_count': fields.function(
             _get_attached_docs, string="Number of documents attached", type='integer'
-        )
+        ),
+        'date_start': fields.date('Start Date'),
+        'date': fields.date('Expiration Date', select=True, track_visibility='onchange'),
      }
 
     def _get_type_common(self, cr, uid, context):
-        ids = self.pool.get('project.task.type').search(cr, uid, [('case_default','=',1)], context=context)
-        return ids
+        return [(0, 0, {
+            'name': _('New'),
+            'sequence': 1,
+        })]
 
-    _order = "sequence, id"
+    _order = "sequence, name, id"
     _defaults = {
         'active': True,
         'type': 'contract',
         'label_tasks': 'Tasks',
         'state': 'open',
         'sequence': 10,
+        'user_id': lambda self,cr,uid,ctx: uid,
         'type_ids': _get_type_common,
         'alias_model': 'project.task',
         'privacy_visibility': 'employees',
@@ -259,7 +261,6 @@ class project(osv.osv):
         data_obj = self.pool.get('ir.model.data')
         result = []
         for proj in self.browse(cr, uid, ids, context=context):
-            parent_id = context.get('parent_id', False)
             context.update({'analytic_project_copy': True})
             new_date_start = time.strftime('%Y-%m-%d')
             new_date_end = False
@@ -272,14 +273,8 @@ class project(osv.osv):
                                     'name':_("%s (copy)") % (proj.name),
                                     'state':'open',
                                     'date_start':new_date_start,
-                                    'date':new_date_end,
-                                    'parent_id':parent_id}, context=context)
+                                    'date':new_date_end}, context=context)
             result.append(new_id)
-
-            child_ids = self.search(cr, uid, [('parent_id','=', proj.analytic_account_id.id)], context=context)
-            parent_id = self.read(cr, uid, new_id, ['analytic_account_id'])['analytic_account_id'][0]
-            if child_ids:
-                self.duplicate_template(cr, uid, child_ids, context={'parent_id': parent_id})
 
         if result and len(result):
             res_id = result[0]
@@ -310,107 +305,6 @@ class project(osv.osv):
             tasks_id = [x[0] for x in cr.fetchall()]
             if tasks_id:
                 task_obj.write(cr, uid, tasks_id, {'active': value}, context=context)
-            child_ids = self.search(cr, uid, [('parent_id','=', proj.analytic_account_id.id)])
-            if child_ids:
-                self.setActive(cr, uid, child_ids, value, context=None)
-        return True
-
-    def _schedule_header(self, cr, uid, ids, force_members=True, context=None):
-        context = context or {}
-        if type(ids) in (long, int,):
-            ids = [ids]
-        projects = self.browse(cr, uid, ids, context=context)
-
-        for project in projects:
-            if (not project.members) and force_members:
-                raise UserError(_("You must assign members on the project '%s'!") % (project.name,))
-
-        resource_pool = self.pool.get('resource.resource')
-
-        result = "from openerp.addons.resource.faces import *\n"
-        result += "import datetime\n"
-        for project in self.browse(cr, uid, ids, context=context):
-            u_ids = [i.id for i in project.members]
-            if project.user_id and (project.user_id.id not in u_ids):
-                u_ids.append(project.user_id.id)
-            for task in project.tasks:
-                if task.user_id and (task.user_id.id not in u_ids):
-                    u_ids.append(task.user_id.id)
-            calendar_id = project.resource_calendar_id and project.resource_calendar_id.id or False
-            resource_objs = resource_pool.generate_resources(cr, uid, u_ids, calendar_id, context=context)
-            for key, vals in resource_objs.items():
-                result +='''
-class User_%s(Resource):
-    efficiency = %s
-''' % (key,  vals.get('efficiency', False))
-
-        result += '''
-def Project():
-        '''
-        return result
-
-    def _schedule_project(self, cr, uid, project, context=None):
-        resource_pool = self.pool.get('resource.resource')
-        calendar_id = project.resource_calendar_id and project.resource_calendar_id.id or False
-        working_days = resource_pool.compute_working_calendar(cr, uid, calendar_id, context=context)
-        # TODO: check if we need working_..., default values are ok.
-        puids = [x.id for x in project.members]
-        if project.user_id:
-            puids.append(project.user_id.id)
-        result = """
-  def Project_%d():
-    start = \'%s\'
-    working_days = %s
-    resource = %s
-"""       % (
-            project.id,
-            project.date_start or time.strftime('%Y-%m-%d'), working_days,
-            '|'.join(['User_'+str(x) for x in puids]) or 'None'
-        )
-        vacation = calendar_id and tuple(resource_pool.compute_vacation(cr, uid, calendar_id, context=context)) or False
-        if vacation:
-            result+= """
-    vacation = %s
-""" %   ( vacation, )
-        return result
-
-    #TODO: DO Resource allocation and compute availability
-    def compute_allocation(self, rc, uid, ids, start_date, end_date, context=None):
-        if context ==  None:
-            context = {}
-        allocation = {}
-        return allocation
-
-    def schedule_tasks(self, cr, uid, ids, context=None):
-        context = context or {}
-        if type(ids) in (long, int,):
-            ids = [ids]
-        projects = self.browse(cr, uid, ids, context=context)
-        result = self._schedule_header(cr, uid, ids, False, context=context)
-        for project in projects:
-            result += self._schedule_project(cr, uid, project, context=context)
-            result += self.pool.get('project.task')._generate_task(cr, uid, project.tasks, ident=4, context=context)
-
-        local_dict = {}
-        exec result in local_dict
-        projects_gantt = Task.BalancedProject(local_dict['Project'])
-
-        for project in projects:
-            project_gantt = getattr(projects_gantt, 'Project_%d' % (project.id,))
-            for task in project.tasks:
-                if task.stage_id and task.stage_id.fold:
-                    continue
-
-                p = getattr(project_gantt, 'Task_%d' % (task.id,))
-
-                self.pool.get('project.task').write(cr, uid, [task.id], {
-                    'date_start': p.start.strftime('%Y-%m-%d %H:%M:%S'),
-                    'date_end': p.end.strftime('%Y-%m-%d %H:%M:%S')
-                }, context=context)
-                if (not task.user_id) and (p.booked_resource):
-                    self.pool.get('project.task').write(cr, uid, [task.id], {
-                        'user_id': int(p.booked_resource[0].name[5:]),
-                    }, context=context)
         return True
 
     def create(self, cr, uid, vals, context=None):
@@ -419,10 +313,8 @@ def Project():
         # Prevent double project creation when 'use_tasks' is checked + alias management
         create_context = dict(context, project_creation_in_progress=True,
                               alias_model_name=vals.get('alias_model', 'project.task'),
-                              alias_parent_model_name=self._name)
-
-        if vals.get('type', False) not in ('template', 'contract'):
-            vals['type'] = 'contract'
+                              alias_parent_model_name=self._name,
+                              mail_create_nosubscribe=True)
 
         ir_values = self.pool.get('ir.values').get_default(cr, uid, 'project.config.settings', 'generate_project_alias')
         if ir_values:
@@ -471,11 +363,10 @@ class task(osv.osv):
         access_rights_uid = access_rights_uid or uid
         if read_group_order == 'stage_id desc':
             order = '%s desc' % order
-        search_domain = []
         if 'default_project_id' in context:
-            search_domain += ['|', ('project_ids', '=', context['default_project_id']), ('id', 'in', ids)]
+            search_domain = ['|', ('project_ids', '=', context['default_project_id']), ('id', 'in', ids)]
         else:
-            search_domain += ['|', ('id', 'in', ids), ('case_default', '=', True)]
+            search_domain = [('id', 'in', ids)]
         stage_ids = stage_obj._search(cr, uid, search_domain, order=order, access_rights_uid=access_rights_uid, context=context)
         result = stage_obj.name_get(cr, access_rights_uid, stage_ids, context=context)
         # restore order of the search
@@ -486,27 +377,8 @@ class task(osv.osv):
             fold[stage.id] = stage.fold or False
         return result, fold
 
-    def _read_group_user_id(self, cr, uid, ids, domain, read_group_order=None, access_rights_uid=None, context=None):
-        if context is None:
-            context = {}
-        res_users = self.pool.get('res.users')
-        access_rights_uid = access_rights_uid or uid
-        if 'default_project_id' in context:
-            ids += self.pool.get('project.project').read(cr, access_rights_uid, context['default_project_id'], ['members'], context=context)['members']
-            order = res_users._order
-            # lame way to allow reverting search, should just work in the trivial case
-            if read_group_order == 'user_id desc':
-                order = '%s desc' % order
-            # de-duplicate and apply search order
-            ids = res_users._search(cr, uid, [('id','in',ids)], order=order, access_rights_uid=access_rights_uid, context=context)
-        result = res_users.name_get(cr, access_rights_uid, ids, context=context)
-        # restore order of the search
-        result.sort(lambda x,y: cmp(ids.index(x[0]), ids.index(y[0])))
-        return result, {}
-
     _group_by_full = {
         'stage_id': _read_group_stage_ids,
-        'user_id': _read_group_user_id,
     }
 
     def onchange_remaining(self, cr, uid, ids, remaining=0.0, planned=0.0):
@@ -559,7 +431,7 @@ class task(osv.osv):
     def _compute_displayed_image(self, cr, uid, ids, prop, arg, context=None):
         res = {}
         for line in self.browse(cr, uid, ids, context=context):
-            res[line.id] = line.attachment_ids and line.attachment_ids.filtered(lambda x: x.file_type_icon == 'webimage')[0] or None
+            res[line.id] = line.attachment_ids and line.attachment_ids.filtered(lambda x: x.mimetype.startswith('image'))[0] or None
         return res
 
     _columns = {
@@ -582,8 +454,9 @@ class task(osv.osv):
         'write_date': fields.datetime('Last Modification Date', readonly=True, select=True), #not displayed in the view but it might be useful with base_action_rule module (and it needs to be defined first for that)
         'date_start': fields.datetime('Starting Date', select=True, copy=False),
         'date_end': fields.datetime('Ending Date', select=True, copy=False),
+        'date_assign': fields.datetime('Assigning Date', select=True, copy=False, readonly=True),
         'date_deadline': fields.date('Deadline', select=True, copy=False),
-        'date_last_stage_update': fields.datetime('Last Stage Update', select=True, copy=False),
+        'date_last_stage_update': fields.datetime('Last Stage Update', select=True, copy=False, readonly=True),
         'project_id': fields.many2one('project.project', 'Project', ondelete='set null', select=True, track_visibility='onchange', change_default=True),
         'parent_ids': fields.many2many('project.task', 'project_task_parent_rel', 'task_id', 'parent_id', 'Parent Tasks'),
         'child_ids': fields.many2many('project.task', 'project_task_parent_rel', 'parent_id', 'task_id', 'Delegated Tasks'),
@@ -780,9 +653,9 @@ class task(osv.osv):
         # for default stage
         if vals.get('project_id') and not context.get('default_project_id'):
             context['default_project_id'] = vals.get('project_id')
-        # user_id change: update date_start
-        if vals.get('user_id') and not vals.get('date_start'):
-            vals['date_start'] = fields.datetime.now()
+        # user_id change: update date_assign
+        if vals.get('user_id'):
+            vals['date_assign'] = fields.datetime.now()
 
         # context: no_log, because subtype already handle this
         create_context = dict(context, mail_create_nolog=True)
@@ -797,9 +670,9 @@ class task(osv.osv):
         # stage change: update date_last_stage_update
         if 'stage_id' in vals:
             vals['date_last_stage_update'] = fields.datetime.now()
-        # user_id change: update date_start
-        if vals.get('user_id') and 'date_start' not in vals:
-            vals['date_start'] = fields.datetime.now()
+        # user_id change: update date_assign
+        if vals.get('user_id'):
+            vals['date_assign'] = fields.datetime.now()
 
         # Overridden to reset the kanban_state to normal whenever
         # the stage (stage_id) of the task changes.
@@ -879,6 +752,37 @@ class task(osv.osv):
             return 'project.mt_task_stage'
         return super(task, self)._track_subtype(cr, uid, ids, init_values, context=context)
 
+    def _notification_group_recipients(self, cr, uid, ids, message, recipients, done_ids, group_data, context=None):
+        """ Override the mail.thread method to handle project users and officers
+        recipients. Indeed those will have specific action in their notification
+        emails: creating tasks, assigning it. """
+        group_project_user = self.pool['ir.model.data'].xmlid_to_res_id(cr, uid, 'project.group_project_user')
+        for recipient in recipients:
+            if recipient.id in done_ids:
+                continue
+            if recipient.user_ids and group_project_user in recipient.user_ids[0].groups_id.ids:
+                group_data['group_project_user'] |= recipient
+                done_ids.add(recipient.id)
+        return super(task, self)._notification_group_recipients(cr, uid, ids, message, recipients, done_ids, group_data, context=context)
+
+    def _notification_get_recipient_groups(self, cr, uid, ids, message, recipients, context=None):
+        res = super(task, self)._notification_get_recipient_groups(cr, uid, ids, message, recipients, context=context)
+
+        take_action = self._notification_link_helper(cr, uid, ids, 'assign', context=context)
+        new_action = self._notification_link_helper(cr, uid, ids, 'new', context=context, view_xmlid='project.action_view_task')
+
+        task_record = self.browse(cr, uid, ids[0], context=context)
+        actions = []
+        if not task_record.user_id:
+            actions.append({'url': take_action, 'title': _('I take it')})
+        else:
+            actions.append({'url': new_action, 'title': _('New Task')})
+
+        res['group_project_user'] = {
+            'actions': actions
+        }
+        return res
+
     @api.cr_uid_context
     def message_get_reply_to(self, cr, uid, ids, default=None, context=None):
         """ Override to get the reply_to of the parent project. """
@@ -902,7 +806,7 @@ class task(osv.osv):
         new_task = self.browse(cr, uid, res, context=context)
         if new_task.project_id and new_task.project_id.alias_name:  # check left-part is not already an alias
             email_list = filter(lambda x: x.split('@')[0] != new_task.project_id.alias_name, email_list)
-        partner_ids = filter(lambda x: x, self._find_partner_from_emails(cr, uid, email_list, check_followers=False))
+        partner_ids = filter(lambda x: x, self._find_partner_from_emails(cr, uid, [], email_list, check_followers=False))
         self.message_subscribe(cr, uid, [res], partner_ids, context=context)
         return res
 
@@ -988,8 +892,6 @@ class account_analytic_account(osv.osv):
         for account in self.browse(cr, uid, ids, context=context):
             if not vals.get('name'):
                 vals_for_project['name'] = account.name
-            if not vals.get('type'):
-                vals_for_project['type'] = account.type
             self.project_create(cr, uid, account.id, vals_for_project, context=context)
         return super(account_analytic_account, self).write(cr, uid, ids, vals, context=context)
 
@@ -1122,5 +1024,8 @@ class project_tags(osv.Model):
     _name = "project.tags"
     _description = "Tags of project's tasks, issues..."
     _columns = {
-        'name': fields.char('Name', required=True, translate=True),
+        'name': fields.char('Name', required=True),
     }
+    _sql_constraints = [
+            ('name_uniq', 'unique (name)', "Tag name already exists !"),
+    ]

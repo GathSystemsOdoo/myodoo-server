@@ -23,7 +23,7 @@
             <field name="arch" type="xml">
                 <form string="Carrier">
                     <sheet>
-                    <div class="oe_title">
+                    <div class="oe_title" name="title">
                         <label for="name" class="oe_edit_only"/>
                         <h1>
                             <field name="name"/>
@@ -248,7 +248,6 @@
                             <field name="weight" class="oe_inline"/>
                             <field name="weight_uom_id" nolabel="1" class="oe_inline"/>
                         </div>
-                        <field name="weight_net" groups="base.group_no_one"/>
                         <field name="number_of_packages"/>
                     </group>
                 </group>
@@ -265,18 +264,6 @@
             </field>
         </record>
 
-        <record id="action_picking_tree" model="ir.actions.act_window">
-            <field name="name">Picking to be invoiced</field>
-            <field name="res_model">stock.picking</field>
-            <field name="type">ir.actions.act_window</field>
-            <field name="view_type">form</field>
-            <field name="view_mode">tree,form</field>
-            <field name="domain">[('invoice_state','=','2binvoiced'),('state','=','done'),('type','=','out')]</field>
-            <field name="filter" eval="True"/>
-            <field name="context">{'default_invoice_state': '2binvoiced', 'default_type': 'out', 'contact_display': 'partner'}</field>
-            <field name="search_view_id" eval="False"/>
-        </record>
-
         <record id="view_picking_withweight_internal_move_form" model="ir.ui.view">
             <field name="name">stock.picking_withweight.internal.move.form.view</field>
             <field name="model">stock.move</field>
@@ -284,7 +271,6 @@
             <field name="arch" type="xml">
                 <xpath expr="//field[@name='date_expected']" position="after">
                     <field name="weight"/>
-                    <field name="weight_net" groups="base.group_no_one"/>
                 </xpath>
             </field>
         </record>
@@ -301,7 +287,6 @@
                             <field name="weight" nolabel="1" class="oe_inline"/>
                             <field name="weight_uom_id" nolabel="1" class="oe_inline"/>
                         </div>
-                        <field name="weight_net" groups="base.group_no_one"/>
                     </group>
                 </xpath>
             </field>

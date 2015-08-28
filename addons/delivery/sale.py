@@ -2,6 +2,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 import time
+from openerp import api
 from openerp.osv import fields, osv
 from openerp.tools.translate import _
 from openerp.exceptions import UserError
@@ -27,14 +28,10 @@ class sale_order(osv.Model):
             help="Complete this field if you plan to invoice the shipping based on picking."),
     }
 
-    def onchange_partner_id(self, cr, uid, ids, part, context=None):
-        result = super(sale_order, self).onchange_partner_id(cr, uid, ids, part, context=context)
-        if part:
-            dtype = self.pool.get('res.partner').browse(cr, uid, part, context=context).property_delivery_carrier.id
-            # TDE NOTE: not sure the aded 'if dtype' is valid
-            if dtype:
-                result['value']['carrier_id'] = dtype
-        return result
+    @api.onchange('partner_id')
+    def onchange_partner_id_dtype(self):
+        if self.partner_id:
+            self.carrier_id = self.partner_id.property_delivery_carrier
 
 
     def _delivery_unset(self, cr, uid, ids, context=None):
@@ -49,6 +46,7 @@ class sale_order(osv.Model):
         acc_fp_obj = self.pool.get('account.fiscal.position')
         self._delivery_unset(cr, uid, ids, context=context)
         currency_obj = self.pool.get('res.currency')
+        line_ids = []
         for order in self.browse(cr, uid, ids, context=context):
             grid_id = carrier_obj.grid_get(cr, uid, [order.carrier_id.id], order.partner_shipping_id.id)
             if not grid_id:
@@ -67,7 +65,7 @@ class sale_order(osv.Model):
                 price_unit = currency_obj.compute(cr, uid, order.company_id.currency_id.id, order.pricelist_id.currency_id.id,
                     price_unit, context=dict(context or {}, date=order.date_order))
             #create the sale order line
-            line_obj.create(cr, uid, {
+            line_id = line_obj.create(cr, uid, {
                 'order_id': order.id,
                 'name': grid.carrier_id.name,
                 'product_uom_qty': 1,
@@ -77,3 +75,5 @@ class sale_order(osv.Model):
                 'tax_id': [(6, 0, taxes_ids)],
                 'is_delivery': True
             }, context=context)
+            line_ids.append(line_id)
+        return line_ids

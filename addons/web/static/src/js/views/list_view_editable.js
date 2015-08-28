@@ -312,10 +312,10 @@ ListView.include(/** @lends instance.web.ListView# */{
         this._super.apply(this, arguments); // Sets this.$buttons
         if (add_button && this.editable()) {
             this.$buttons
-                .off('click', '.oe_list_save')
-                .on('click', '.oe_list_save', this.proxy('save_edition'))
-                .off('click', '.oe_list_discard')
-                .on('click', '.oe_list_discard', function (e) {
+                .off('click', '.o_list_button_save')
+                .on('click', '.o_list_button_save', this.proxy('save_edition'))
+                .off('click', '.o_list_button_discard')
+                .on('click', '.o_list_button_discard', function (e) {
                     e.preventDefault();
                     self.cancel_edition();
                 });
@@ -454,7 +454,7 @@ ListView.include(/** @lends instance.web.ListView# */{
         var $cell = $(cell);
 
         field.set_dimensions($cell.outerHeight(), $cell.outerWidth());
-        field.$el.position({
+        field.$el.css({top: 0, left: 0}).position({
             my: 'left top',
             at: 'left top',
             of: $cell
@@ -812,6 +812,7 @@ ListView.include(/** @lends instance.web.ListView# */{
             e.preventDefault();
             return this._next();
         }
+        this.editor.form.__clicked_inside = true;
         return $.when();
     }
 });

@@ -348,8 +348,8 @@ FavoriteMenu.include({
             this.$add_dashboard_link = this.$('.o_add_to_dashboard_link');
             var title = this.searchview.get_title();
             this.$add_dashboard_input.val(title);
-            this.$add_dashboard_link.click(function () {
-                event.preventDefault();
+            this.$add_dashboard_link.click(function (e) {
+                e.preventDefault();
                 self.toggle_dashboard_menu();
             });
             this.$add_dashboard_btn.click(this.proxy('add_dashboard'));
@@ -357,7 +357,7 @@ FavoriteMenu.include({
     },
     toggle_dashboard_menu: function (is_open) {
         this.$add_dashboard_link
-             .toggleClass('o-closed-menu', !(_.isUndefined(is_open)) ? !is_open : undefined)
+            .toggleClass('o_closed_menu', !(_.isUndefined(is_open)) ? !is_open : undefined)
             .toggleClass('o_open_menu', is_open);
         this.$add_to_dashboard.toggle(is_open);
         if (this.$add_dashboard_link.hasClass('o_open_menu')) {
@@ -395,23 +395,19 @@ FavoriteMenu.include({
             board = new Model('board.board'),
             name = self.$add_dashboard_input.val();
         
-        board.call('list', [board.context()])
-            .then(function (board_list) {
-                return self.rpc('/board/add_to_dashboard', {
-                    menu_id: board_list[0].id,                    
-                    action_id: self.action_id,
-                    context_to_save: c,
-                    domain: d,
-                    view_mode: self.view_manager.active_view.type,
-                    name: name,
-                });
-            }).then(function (r) {
-                if (r) {
-                    self.do_notify(_.str.sprintf(_t("'%s' added to dashboard"), name), '');
-                } else {
-                    self.do_warn(_t("Could not add filter to dashboard"));
-                }
-            });
+        return self.rpc('/board/add_to_dashboard', {
+            action_id: self.action_id,
+            context_to_save: c,
+            domain: d,
+            view_mode: self.view_manager.active_view.type,
+            name: name,
+        }).then(function (r) {
+            if (r) {
+                self.do_notify(_.str.sprintf(_t("'%s' added to dashboard"), name), '');
+            } else {
+                self.do_warn(_t("Could not add filter to dashboard"));
+            }
+        });
     },
 });
 

@@ -14,7 +14,9 @@ var ZeroClipboard = window.ZeroClipboard;
 
 var exports = {};
 
-website.if_dom_contains('div.o_website_links_create_tracked_url', function() {
+if(!$('.o_website_links_create_tracked_url').length) {
+    return $.Deferred().reject("DOM doesn't contain '.o_website_links_create_tracked_url'");
+}
 
     var SelectBox = Widget.extend({
         init: function(obj) {
@@ -153,6 +155,12 @@ website.if_dom_contains('div.o_website_links_create_tracked_url', function() {
 
             var init_code = this.$('#o_website_links_edit_code_form #init_code').val();
             var new_code = this.$('#o_website_links_edit_code_form #new_code').val();
+
+            if(new_code === '') {
+                self.$('.o_website_links_code_error').html("The code cannot be left empty");
+                self.$('.o_website_links_code_error').show();
+                return;
+            }
 
             function show_new_code(new_code) {
                 self.$('.o_website_links_code_error').html('');
@@ -386,7 +394,6 @@ website.if_dom_contains('div.o_website_links_create_tracked_url', function() {
     exports.SelectBox = SelectBox;
     exports.RecentLinkBox = RecentLinkBox;
     exports.RecentLinks = RecentLinks;
-});
 
 return exports;
 });

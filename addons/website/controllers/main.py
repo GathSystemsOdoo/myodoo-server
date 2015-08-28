@@ -130,7 +130,7 @@ class Website(openerp.addons.web.controllers.main.Home):
 
             pages = 0
             first_page = None
-            locs = request.website.enumerate_pages()
+            locs = request.website.sudo(user=request.website.user_id.id).enumerate_pages()
             while True:
                 start = pages * LOC_PER_SITEMAP
                 values = {
@@ -186,7 +186,7 @@ class Website(openerp.addons.web.controllers.main.Home):
             request.registry['website.menu'].create(
                 request.cr, request.uid, {
                     'name': path,
-                    'url': "/page/" + xml_id,
+                    'url': "/page/" + xml_id[8:],
                     'parent_id': request.website.menu_id.id,
                     'website_id': request.website.id,
                 }, context=request.context)
@@ -216,10 +216,10 @@ class Website(openerp.addons.web.controllers.main.Home):
                 modules_to_update.append(view.model_data_id.module)
 
         if modules_to_update:
-            module_obj = request.registry['ir.module.module']
-            module_ids = module_obj.search(request.cr, request.uid, [('name', 'in', modules_to_update)], context=request.context)
-            if module_ids:
-                module_obj.button_immediate_upgrade(request.cr, request.uid, module_ids, context=request.context)
+            module_obj = request.env['ir.module.module'].sudo()
+            modules = module_obj.search([('name', 'in', modules_to_update)])
+            if modules:
+                modules.button_immediate_upgrade()
         return request.redirect(redirect)
 
     @http.route('/website/customize_template_get', type='json', auth='user', website=True)
@@ -235,9 +235,11 @@ class Website(openerp.addons.web.controllers.main.Home):
 
     @http.route('/website/translations', type='json', auth="public", website=True)
     def get_website_translations(self, lang, mods=None):
-        module_obj = request.registry['ir.module.module']
-        module_ids = module_obj.search(request.cr, request.uid, [('name', 'ilike', 'website'), ('state', '=', 'installed')], context=request.context)
-        modules = [x['name'] for x in module_obj.read(request.cr, request.uid, module_ids, ['name'], context=request.context)]
+        Modules = request.env['ir.module.module'].sudo()
+        modules = Modules.search([
+            ('name', 'ilike', 'website'),
+            ('state', '=', 'installed')
+        ]).mapped('name')
         if mods:
             modules += mods
         return WebClient().translations(mods=modules, lang=lang)
@@ -257,12 +259,13 @@ class Website(openerp.addons.web.controllers.main.Home):
         obj = _object.browse(request.cr, request.uid, _id)
         return bool(obj.website_published)
 
-    @http.route(['/website/seo_suggest/<keywords>'], type='http', auth="public", website=True)
-    def seo_suggest(self, keywords):
+    @http.route(['/website/seo_suggest'], type='json', auth="user", website=True)
+    def seo_suggest(self, keywords=None, lang=None):
+        language = lang.split("_")
         url = "http://google.com/complete/search"
         try:
             req = urllib2.Request("%s?%s" % (url, werkzeug.url_encode({
-                'ie': 'utf8', 'oe': 'utf8', 'output': 'toolbar', 'q': keywords})))
+                'ie': 'utf8', 'oe': 'utf8', 'output': 'toolbar', 'q': keywords, 'hl': language[0], 'gl': language[1]})))
             request = urllib2.urlopen(req)
         except (urllib2.HTTPError, urllib2.URLError):
             return []
@@ -329,13 +332,6 @@ class Website(openerp.addons.web.controllers.main.Home):
         return res
 
     #------------------------------------------------------
-    # Helpers
-    #------------------------------------------------------
-    @http.route(['/website/kanban'], type='http', auth="public", methods=['POST'], website=True)
-    def kanban(self, **post):
-        return request.website.kanban_col(**post)
-
-    #------------------------------------------------------
     # Server actions
     #------------------------------------------------------
     @http.route([
@@ -373,17 +369,3 @@ class Website(openerp.addons.web.controllers.main.Home):
         if res:
             return res
         return request.redirect('/')
-
-    #------------------------------------------------------
-    # image route for browse record
-    #------------------------------------------------------
-    @http.route([
-        '/website/image',
-        '/website/image/<xmlid>',
-        '/website/image/<xmlid>/<field>',
-        '/website/image/<model>/<id>/<field>',
-        '/website/image/<model>/<id>/<field>/<int:max_width>x<int:max_height>'
-        ], type='http', auth="public")
-    def website_image(self, model=None, id=None, field=None, xmlid=None, max_width=None, max_height=None):
-        logger.warning("Deprecated image controller, please use /web_editor/image/")
-        return Web_Editor().image(model=model, id=id, field=field, xmlid=xmlid, max_width=max_width, max_height=max_height)

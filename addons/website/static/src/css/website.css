@@ -1,4 +1,4 @@
-@charset "utf-8";
+@charset "UTF-8";
 /*       THIS CSS FILE IS FOR WEBSITE THEMING CUSTOMIZATION ONLY
  *
  * css for editor buttons, openerp widget included in the website and other
@@ -120,6 +120,10 @@ hr {
   font-size: 120%;
 }
 
+.jumbotron.para_large p{
+  font-size: 150%;
+}
+
 .readable {
   font-size: 120%;
   max-width: 700px;
@@ -180,10 +184,6 @@ body > nav.navbar {
   }
 }
 /* ----- BOOTSTRAP FIX ----- */
-.col-md-12 {
-  float: left;
-  width: 100%;
-}
 
 @-moz-document url-prefix() {
   .table .img-responsive {
@@ -262,7 +262,7 @@ ul.nav-stacked > li > a {
 
 /* ---- SNIPPETS --- */
 .oe_img_bg {
-  background-size: 100%;
+  background-size: cover;
 }
 
 .carousel, .parallax, .blockquote {
@@ -547,8 +547,7 @@ div.carousel div.carousel-content {
 
 /* Background (kept for 8.0 compatibility) */
 .oe_dark {
-  background: #eff8f8;
-  background: rgba(200, 200, 200, 0.14);
+  background-color: rgba(200, 200, 200, 0.14);
 }
 
 .oe_black {
@@ -760,6 +759,7 @@ div.carousel .item.text_only .container > .carousel-image {
 
 .oe_search_clear {
   position: absolute;
+  display: none;
   cursor: pointer;
   z-index: 2;
   right: 42px;
@@ -774,4 +774,14 @@ div.carousel .item.text_only .container > .carousel-image {
 
 .note-editor button {
   height: 30px;
+}
+
+.o_hidden {
+  display: none !important;
+}
+
+#PlannerDialog {
+  top: 35px;
+  -webkit-box-shadow: 0 3px 9px #666666;
+  box-shadow: 0 3px 9px #666666;
 }

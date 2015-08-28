@@ -61,6 +61,8 @@ var ViewManager = Widget.extend(ControlPanelMixin, {
                     title: self.title,
                     button_label: View ? _.str.sprintf(_t('%(view_type)s view'), {'view_type': (view_label || view_type)}) : (void 'nope'),
                     multi_record: View ? View.prototype.multi_record : undefined,
+                    accesskey: View ? View.prototype.accesskey : undefined,
+                    icon: View ? View.prototype.icon : undefined,
                 };
             self.view_order.push(view_descr);
             self.views[view_type] = view_descr;
@@ -181,7 +183,7 @@ var ViewManager = Widget.extend(ControlPanelMixin, {
                 cp_content: _.extend({}, self.control_elements, view_control_elements),
                 hidden: self.flags.headless,
                 searchview: self.searchview,
-                search_view_hidden: view_controller.searchable === false,
+                search_view_hidden: view_controller.searchable === false || view_controller.searchview_hidden,
             };
             self.update_control_panel(cp_status);
 
@@ -217,7 +219,7 @@ var ViewManager = Widget.extend(ControlPanelMixin, {
             if (self.action_manager) self.action_manager.trigger('history_back');
         });
         controller.on("change:title", this, function() {
-            if (self.action_manager) {
+            if (self.action_manager && !self.flags.headless) {
                 var breadcrumbs = self.action_manager.get_breadcrumbs();
                 self.update_control_panel({breadcrumbs: breadcrumbs}, {clear: false});
             }

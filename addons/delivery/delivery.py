@@ -98,12 +98,11 @@ class delivery_carrier(osv.osv):
 
             # not using advanced pricing per destination: override grid
             grid_id = grid_pool.search(cr, uid, [('carrier_id', '=', record.id)], context=context)
-            if grid_id and not (record.normal_price or record.free_if_more_than):
+            if grid_id and not (record.normal_price is not False or record.free_if_more_than):
                 grid_pool.unlink(cr, uid, grid_id, context=context)
                 grid_id = None
 
-            # Check that float, else 0.0 is False
-            if not (isinstance(record.normal_price,float) or record.free_if_more_than):
+            if not (record.normal_price is not False or record.free_if_more_than):
                 continue
 
             if not grid_id:
@@ -130,7 +129,7 @@ class delivery_carrier(osv.osv):
                     'list_base_price': 0.0,
                 }
                 grid_line_pool.create(cr, uid, line_data, context=context)
-            if isinstance(record.normal_price,float):
+            if record.normal_price is not False:
                 line_data = {
                     'grid_id': grid_id and grid_id[0],
                     'name': _('Default price'),
@@ -187,7 +186,7 @@ class delivery_grid(osv.osv):
             if line.state == 'cancel':
                 continue
             if line.is_delivery:
-                total_delivery += line.price_subtotal + self.pool['sale.order']._amount_line_tax(cr, uid, line, context=context)
+                total_delivery += line.price_total
             if not line.product_id or line.is_delivery:
                 continue
             q = product_uom_obj._compute_qty(cr, uid, line.product_uom.id, line.product_uom_qty, line.product_id.uom_id.id)
@@ -230,7 +229,7 @@ class delivery_grid_line(osv.osv):
         'variable_factor': fields.selection([('weight','Weight'),('volume','Volume'),('wv','Weight * Volume'), ('price','Price'), ('quantity','Quantity')], 'Variable Factor', required=True),
         'list_base_price': fields.float('Sale Base Price', digits_compute=dp.get_precision('Product Price'), required=True),
         'list_price': fields.float('Sale Price', digits_compute= dp.get_precision('Product Price'), required=True),
-        'standard_price': fields.float('Cost Price', digits_compute= dp.get_precision('Product Price'), required=True),
+        'standard_price': fields.float('Shipper Price', digits_compute= dp.get_precision('Product Price'), required=True),
     }
 
     _defaults = {

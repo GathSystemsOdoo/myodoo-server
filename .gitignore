@@ -2,7 +2,9 @@
 _build/
 
 # dotfiles
+.*
 !.gitignore
+!.mailmap
 # compiled python files
 *.py[co]
 # setup.py egg_info
@@ -12,7 +14,6 @@ _build/
 # hg stuff
 *.orig
 status
-*.pyc
 # odoo filestore
 openerp/filestore
 # maintenance migration scripts
@@ -31,4 +32,3 @@ install/win32/meta.py
 /man/
 /share/
 /src/
-/.settings/

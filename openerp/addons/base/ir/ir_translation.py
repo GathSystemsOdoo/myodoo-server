@@ -292,14 +292,20 @@ class ir_translation(osv.osv):
 
     def _set_ids(self, cr, uid, name, tt, lang, ids, value, src=None):
         self.clear_caches()
-
-        cr.execute('delete from ir_translation '
+        cr.execute('update ir_translation '
+                  'set value=%s '
+                  '  , src=%s '
+                  '  , state=%s '
                 'where lang=%s '
                     'and type=%s '
                     'and name=%s '
-                    'and res_id IN %s',
-                (lang,tt,name,tuple(ids),))
-        for id in ids:
+                    'and res_id IN %s '
+                'returning res_id',
+                (value,src,'translated',lang,tt,name,tuple(ids),))
+
+        existing_ids = [x[0] for x in cr.fetchall()]
+
+        for id in list(set(ids) - set(existing_ids)):
             self.create(cr, uid, {
                 'lang':lang,
                 'type':tt,
@@ -307,6 +313,7 @@ class ir_translation(osv.osv):
                 'res_id':id,
                 'value':value,
                 'src':src,
+                'state':'translated'
                 })
         return len(ids)
 

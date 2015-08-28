@@ -118,7 +118,7 @@ class AccountMove(models.Model):
                 new_name = False
                 journal = move.journal_id
 
-                if invoice and invoice.move_name:
+                if invoice and invoice.move_name != '/':
                     new_name = invoice.move_name
                 else:
                     if journal.sequence_id:
@@ -177,13 +177,15 @@ class AccountMove(models.Model):
     def assert_balanced(self):
         if not self.ids:
             return True
+        prec = self.env['decimal.precision'].precision_get('Account')
+
         self._cr.execute("""\
             SELECT      move_id
             FROM        account_move_line
             WHERE       move_id in %s
             GROUP BY    move_id
-            HAVING      abs(sum(debit) - sum(credit)) > 0.00001
-            """, (tuple(self.ids),))
+            HAVING      abs(sum(debit) - sum(credit)) > %s
+            """, (tuple(self.ids), 10 ** (-max(5, prec))))
         if len(self._cr.fetchall()) != 0:
             raise UserError(_("Cannot create unbalanced journal entry."))
         return True
@@ -1062,8 +1064,6 @@ class AccountMoveLine(models.Model):
         """
         for obj_line in self:
             if obj_line.analytic_account_id:
-                if not obj_line.journal_id.analytic_journal_id:
-                    raise UserError(_("You have to define an analytic journal on the '%s' journal!") % (obj_line.journal_id.name, ))
                 if obj_line.analytic_line_ids:
                     obj_line.analytic_line_ids.unlink()
                 vals_line = obj_line._prepare_analytic_line()[0]
@@ -1083,10 +1083,9 @@ class AccountMoveLine(models.Model):
             'product_uom_id': self.product_uom_id and self.product_uom_id.id or False,
             'amount': (self.credit or 0.0) - (self.debit or 0.0),
             'general_account_id': self.account_id.id,
-            'journal_id': self.journal_id.analytic_journal_id.id,
             'ref': self.ref,
             'move_id': self.id,
-            'user_id': self._uid,
+            'user_id': self.invoice_id.user_id.id or self._uid,
         }
 
     @api.model
@@ -1102,6 +1101,8 @@ class AccountMoveLine(models.Model):
         if context.get('date_from'):
             if not context.get('strict_range'):
                 domain += ['|', (date_field, '>=', context['date_from']), ('account_id.user_type_id.include_initial_balance', '=', True)]
+            elif context.get('initial_bal'):
+                domain += [(date_field, '<', context['date_from'])]
             else:
                 domain += [(date_field, '>=', context['date_from'])]
 
