@@ -83,10 +83,7 @@ class SaleOrder(models.Model):
     validity_date = fields.Date(string='Expiration Date', readonly=True, states={'draft': [('readonly', False)], 'sent': [('readonly', False)]})
     create_date = fields.Datetime(string='Creation Date', readonly=True, index=True, help="Date on which sales order is created.")
 
-    user_id = fields.Many2one('res.users', string='Salesperson', states={
-        'draft': [('readonly', False)],
-        'sent': [('readonly', False)]
-        }, index=True, track_visibility='onchange', default=lambda self: self.env.user)
+    user_id = fields.Many2one('res.users', string='Salesperson', index=True, track_visibility='onchange', default=lambda self: self.env.user)
     partner_id = fields.Many2one('res.partner', string='Customer', readonly=True, states={'draft': [('readonly', False)], 'sent': [('readonly', False)]}, required=True, change_default=True, index=True, track_visibility='always')
     partner_invoice_id = fields.Many2one('res.partner', string='Invoice Address', readonly=True, required=True, states={'draft': [('readonly', False)], 'sent': [('readonly', False)]}, help="Invoice address for current sales order.")
     partner_shipping_id = fields.Many2one('res.partner', string='Delivery Address', readonly=True, required=True, states={'draft': [('readonly', False)], 'sent': [('readonly', False)]}, help="Delivery address for current sales order.")
@@ -119,6 +116,10 @@ class SaleOrder(models.Model):
     procurement_group_id = fields.Many2one('procurement.group', 'Procurement Group', copy=False)
 
     product_id = fields.Many2one('product.product', related='order_line.product_id', string='Product')
+
+    @api.multi
+    def button_dummy(self):
+        return True
 
     @api.multi
     def unlink(self):
@@ -324,22 +325,9 @@ class SaleOrder(models.Model):
         for order in self:
             email_act = order.action_quotation_send()
             if email_act and email_act.get('context'):
-                composer_obj = self.env['mail.compose.message']
                 email_ctx = email_act['context']
-                template_values = [
-                    email_ctx.get('default_template_id'),
-                    email_ctx.get('default_composition_mode'),
-                    email_ctx.get('default_model'),
-                    email_ctx.get('default_res_id'),
-                ]
-                composer_values = composer_obj.onchange_template_id(*template_values).get('value', {})
-                if not composer_values.get('email_from'):
-                    composer_values['email_from'] = order.company_id.email
-                for key in ['attachment_ids', 'partner_ids']:
-                    if composer_values.get(key):
-                        composer_values[key] = [(6, 0, composer_values[key])]
-                composer_id = composer_obj.with_context(email_ctx).create(composer_values)
-                composer_id.with_context(email_ctx).send_mail()
+                email_ctx.update(default_email_from=order.company_id.email)
+                order.with_context(email_ctx).message_post_with_template(email_ctx.get('default_template_id'))
         return True
 
     @api.multi
@@ -442,6 +430,7 @@ class SaleOrderLine(models.Model):
         for line in self:
             line.price_reduce = line.price_subtotal / line.product_uom_qty if line.product_uom_qty else 0.0
 
+    @api.multi
     @api.onchange('order_id', 'product_id')
     def _compute_tax_id(self):
         for line in self:
@@ -495,12 +484,23 @@ class SaleOrderLine(models.Model):
             new_proc.run()
         return True
 
+    @api.model
+    def _get_analytic_invoice_policy(self):
+        return ['cost']
+
+    @api.model
+    def _get_analytic_track_service(self):
+        return []
+
     # Create new procurements if quantities purchased changes
     @api.model
     def create(self, values):
         line = super(SaleOrderLine, self).create(values)
         if line.state == 'sale':
+            if line.product_id.track_service in self._get_analytic_track_service() or line.product_id.invoice_policy in self._get_analytic_invoice_policy() and not line.order_id.project_id:
+                line.order_id._create_analytic_account()
             line._action_procurement_create()
+
         return line
 
     # Create new procurements if quantities purchased changes
@@ -769,5 +769,5 @@ class ProductTemplate(models.Model):
     invoice_policy = fields.Selection(
         [('order', 'Ordered quantities'),
          ('delivery', 'Delivered quantities'),
-         ('cost', 'Invoice at cost (time and material, expenses)')],
+         ('cost', 'Invoice based on time and material')],
         string='Invoicing Policy', default='order')

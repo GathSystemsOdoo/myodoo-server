@@ -61,7 +61,7 @@ class crm_lead(format_address, osv.osv):
 
     def _get_default_stage_id(self, cr, uid, context=None):
         """ Gives default stage_id """
-        team_id = self.pool['crm.team']._get_default_team_id(cr, uid, context=context)
+        team_id = self.pool['crm.team']._get_default_team_id(cr, SUPERUSER_ID, context=context, user_id=uid)
         return self.stage_find(cr, uid, [], team_id, [('fold', '=', False)], context=context)
 
     def _resolve_type_from_context(self, cr, uid, context=None):
@@ -197,13 +197,13 @@ class crm_lead(format_address, osv.osv):
         # Only used for type opportunity
         'probability': fields.float('Probability', group_operator="avg"),
         'planned_revenue': fields.float('Expected Revenue', track_visibility='always'),
-        'phone': fields.char("Phone", size=64),
         'date_deadline': fields.date('Expected Closing', help="Estimate of the date on which the opportunity will be won."),
         # CRM Actions
+        'last_activity_id': fields.many2one("crm.activity", "Last Activity", select=True),
         'next_activity_id': fields.many2one("crm.activity", "Next Activity", select=True),
-        'next_activity_1': fields.related("next_activity_id", "activity_1_id", "name", type="char", string="Next Activity 1"),
-        'next_activity_2': fields.related("next_activity_id", "activity_2_id", "name", type="char", string="Next Activity 2"),
-        'next_activity_3': fields.related("next_activity_id", "activity_3_id", "name", type="char", string="Next Activity 3"),
+        'next_activity_1': fields.related("last_activity_id", "activity_1_id", "name", type="char", string="Next Activity 1"),
+        'next_activity_2': fields.related("last_activity_id", "activity_2_id", "name", type="char", string="Next Activity 2"),
+        'next_activity_3': fields.related("last_activity_id", "activity_3_id", "name", type="char", string="Next Activity 3"),
         'date_action': fields.date('Next Activity Date', select=True),
         'title_action': fields.char('Next Activity Summary'),
 
@@ -236,7 +236,7 @@ class crm_lead(format_address, osv.osv):
         'type': lambda s, cr, uid, c: 'lead' if s.pool['res.users'].has_group(cr, uid, 'crm.group_use_lead') else 'opportunity',
         'user_id': lambda s, cr, uid, c: uid,
         'stage_id': lambda s, cr, uid, c: s._get_default_stage_id(cr, uid, c),
-        'team_id': lambda s, cr, uid, c: s.pool['crm.team']._get_default_team_id(cr, uid, context=c),
+        'team_id': lambda s, cr, uid, c: s.pool['crm.team']._get_default_team_id(cr, SUPERUSER_ID, context=c, user_id=uid),
         'company_id': lambda s, cr, uid, c: s.pool.get('res.company')._company_default_get(cr, uid, 'crm.lead', context=c),
         'priority': lambda *a: crm_stage.AVAILABLE_PRIORITIES[0][0],
         'probability': 10,
@@ -358,13 +358,29 @@ class crm_lead(format_address, osv.osv):
     case_mark_won = action_set_won
 
     def log_next_activity_1(self, cr, uid, ids, context=None):
-        return self.log_next_activity_done(cr, uid, ids, next_activity_name='activity_1_id', context=context)
+        return self.set_next_activity(cr, uid, ids, next_activity_name='activity_1_id', context=context)
 
     def log_next_activity_2(self, cr, uid, ids, context=None):
-        return self.log_next_activity_done(cr, uid, ids, next_activity_name='activity_2_id', context=context)
+        return self.set_next_activity(cr, uid, ids, next_activity_name='activity_2_id', context=context)
 
     def log_next_activity_3(self, cr, uid, ids, context=None):
-        return self.log_next_activity_done(cr, uid, ids, next_activity_name='activity_3_id', context=context)
+        return self.set_next_activity(cr, uid, ids, next_activity_name='activity_3_id', context=context)
+
+    def set_next_activity(self, cr, uid, ids, next_activity_name, context=None):
+        for lead in self.browse(cr, uid, ids, context=context):
+            if not lead.last_activity_id:
+                continue
+            next_activity = next_activity_name and getattr(lead.last_activity_id, next_activity_name, False) or False
+            if next_activity:
+                date_action = False
+                if next_activity.days:
+                    date_action = (datetime.now() + timedelta(days=next_activity.days)).strftime(tools.DEFAULT_SERVER_DATETIME_FORMAT),
+                lead.write({
+                    'next_activity_id': next_activity.id,
+                    'date_action': date_action,
+                    'title_action': next_activity.description,
+                })
+        return True
 
     def log_next_activity_done(self, cr, uid, ids, context=None, next_activity_name=False):
         to_clear_ids = []
@@ -377,20 +393,8 @@ class crm_lead(format_address, osv.osv):
 %endif"""
             body_html = self.pool['mail.template'].render_template(cr, uid, body_html, 'crm.lead', lead.id, context=context)
             msg_id = lead.message_post(body_html, subtype_id=lead.next_activity_id.subtype_id.id)
-            # update subtype after posting NOT SURE
-
-            next_activity = next_activity_name and getattr(lead.next_activity_id, next_activity_name, False) or False
-            if next_activity:
-                date_action = False
-                if next_activity.days:
-                    date_action = (datetime.now() + timedelta(days=next_activity.days)).strftime(tools.DEFAULT_SERVER_DATETIME_FORMAT),
-                lead.write({
-                    'next_activity_id': next_activity.id,
-                    'date_action': date_action,
-                    'title_action': next_activity.description,
-                })
-            else:
-                to_clear_ids.append(lead.id)
+            to_clear_ids.append(lead.id)
+            self.write(cr, uid, [lead.id], {'last_activity_id': lead.next_activity_id.id}, context=context)
 
         if to_clear_ids:
             self.cancel_next_activity(cr, uid, to_clear_ids, context=context)
@@ -422,6 +426,7 @@ class crm_lead(format_address, osv.osv):
             'next_activity_3': activity.activity_3_id and activity.activity_3_id.name or False,
             'title_action': activity.description,
             'date_action': date_action,
+            'last_activity_id': False,
         }}
 
     def _merge_get_result_type(self, cr, uid, opps, context=None):
@@ -1221,3 +1226,43 @@ class crm_lost_reason(osv.Model):
     _columns = {
         'name': fields.char('Name', required=True),
     }
+
+
+class crm_team(osv.Model):
+    _inherit = "crm.team"
+    def action_your_pipeline(self, cr, uid, context={}):
+        imd = self.pool.get('ir.actions.act_window')
+        imd2 = self.pool.get('ir.model.data')
+        action = imd.for_xml_id(cr, uid, 'crm', "crm_lead_opportunities_tree_view", context=context)
+        view_form = imd2.xmlid_lookup(cr, uid, 'crm.crm_case_form_view_oppor')[2]
+        view_tree = imd2.xmlid_lookup(cr, uid, 'crm.crm_case_tree_view_oppor')[2]
+        view_kanban = imd2.xmlid_lookup(cr, uid, 'crm.crm_case_kanban_view_leads')[2]
+        user = self.pool.get('res.users').browse(cr, uid, uid, context=context)
+        team_id = user.sale_team_id.id
+        if not team_id:
+            team_id = self.search(cr, uid, [], context=context, limit=1)
+            team_id = team_id and team_id[0]
+            action['help'] = """
+                <p class='oe_view_nocontent_create'>Click here to add new opportunities</p><p>
+                    Looks like you are not a member of a sales team. You should add yourself
+                    as a member of one of the sales team.
+                </p>"""
+            if team_id:
+                action['help'] += "<p>As you don't belong to any sales team, Odoo opens the first one by default.</p>"
+        newcontext = eval(action['context'], {'uid': uid})
+        if team_id:
+            newcontext.update({
+                    'default_team_id': team_id,
+                    'search_default_team_id': team_id
+                })
+        result = {
+            'name': action['name'],
+            'help': action['help'],
+            'type': action['type'],
+            'views': [[view_kanban, 'kanban'], [view_tree, 'tree'], [view_form, 'form'], [False, 'graph'], [False, 'calendar'], [False, 'pivot']],
+            'target': action['target'],
+            'context': newcontext,
+            'res_model': action['res_model'],
+        }
+        return result
+

@@ -150,7 +150,7 @@ class AccountChartTemplate(models.Model):
             return default_account
 
         journals = [{'name': _('Customer Invoices'), 'type': 'sale', 'code': _('INV'), 'favorite': True, 'sequence': 5},
-                    {'name': _('Vendor Bills'), 'type': 'purchase', 'code': _('EXJ'), 'favorite': True, 'sequence': 6},
+                    {'name': _('Vendor Bills'), 'type': 'purchase', 'code': _('BILL'), 'favorite': True, 'sequence': 6},
                     {'name': _('Miscellaneous Operations'), 'type': 'general', 'code': _('MISC'), 'favorite': False, 'sequence': 7},
                     {'name': _('Exchange Difference'), 'type': 'general', 'code': _('EXCH'), 'favorite': False, 'sequence': 9},]
         if journals_dict != None:
@@ -390,7 +390,7 @@ class AccountTaxTemplate(models.Model):
     children_tax_ids = fields.Many2many('account.tax.template', 'account_tax_template_filiation_rel', 'parent_tax', 'child_tax', string='Children Taxes')
     sequence = fields.Integer(required=True, default=1,
         help="The sequence field is used to define order in which the tax lines are applied.")
-    amount = fields.Float(required=True, digits=(16, 3))
+    amount = fields.Float(required=True, digits=(16, 4))
     account_id = fields.Many2one('account.account.template', string='Tax Account', ondelete='restrict',
         help="Account that will be set on invoice tax lines for invoices. Leave empty to use the expense account.", oldname='account_collected_id')
     refund_account_id = fields.Many2one('account.account.template', string='Tax Account on Refunds', ondelete='restrict',
@@ -404,7 +404,7 @@ class AccountTaxTemplate(models.Model):
     tag_ids = fields.Many2many('account.account.tag', string='Account tag', help="Optional tags you may want to assign for custom reporting")
 
     _sql_constraints = [
-        ('name_company_uniq', 'unique(name, company_id)', 'Tax names must be unique !'),
+        ('name_company_uniq', 'unique(name, company_id, type_tax_use)', 'Tax names must be unique !'),
     ]
 
     @api.multi
@@ -703,7 +703,7 @@ class WizardMultiChartsAccounts(models.TransientModel):
 
         # When we install the CoA of first company, set the currency to price types and pricelists
         if company.id == 1:
-            for reference in ['product.list_price', 'product.standard_price', 'product.list0', 'purchase.list0']:
+            for reference in ['product.list_price', 'product.standard_price', 'product.list0']:
                 try:
                     tmp2 = self.env.ref(reference).write({'currency_id': self.currency_id.id})
                 except ValueError:

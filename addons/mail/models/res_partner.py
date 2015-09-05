@@ -40,6 +40,7 @@ class Partner(models.Model):
     @api.model
     def _notify_prepare_template_context(self, message):
         # compute signature
+        signature = ""
         if message.author_id and message.author_id.user_ids and message.author_id.user_ids[0].signature:
             signature = message.author_id.user_ids[0].signature
         elif message.author_id:
@@ -172,3 +173,12 @@ class Partner(models.Model):
             emails.send()
 
         return True
+
+    @api.model
+    def get_needaction_count(self):
+        """ compute the number of needaction of the current user """
+        self.env.cr.execute("""
+            SELECT count(*) as needaction_count
+            FROM mail_message_res_partner_needaction_rel R
+            WHERE R.res_partner_id = %s """, (self.env.user.partner_id.id,))
+        return self.env.cr.dictfetchall()[0].get('needaction_count')

@@ -526,7 +526,7 @@ dom.removeBetween = function (sc, so, ec, eo, towrite) {
     if (sc.tagName) {
         sc = sc.childNodes[so] || dom.firstChild(ec);
         so = 0;
-        if (!dom.hasContentBefore(sc)) {
+        if (!dom.hasContentBefore(sc) && towrite) {
             sc.parentNode.insertBefore(document.createTextNode('\u00A0'), sc);
         }
     }
@@ -586,18 +586,20 @@ dom.removeBetween = function (sc, so, ec, eo, towrite) {
             so = 0;
         }
 
-        if (before) {
-            var text = sc.textContent.replace(/[ \t\n\r]+$/, '\u00A0');
-            so -= sc.textContent.length - text.length;
-            sc.textContent = text;
-        }
         if (towrite && !node.firstChild && node.parentNode && !dom.isNotBreakable(node)) {
             var br = $("<br/>")[0];
             node.appendChild(sc);
             sc = br;
             so = 0;
+        } else if (!ancestor.children.length && !ancestor.textContent.match(/\S|\u00A0/)) {
+            sc = $("<br/>")[0];
+            so = 0;
+            $(ancestor).prepend(sc);
+        } else if (before) {
+            var text = sc.textContent.replace(/[ \t\n\r]+$/, '\u00A0');
+            so -= sc.textContent.length - text.length;
+            sc.textContent = text;
         }
-        dom.autoMerge(sc, false);
 
     } else {
 
@@ -736,7 +738,7 @@ dom.isFont = function (node) {
         (nodeName === "SPAN" && (
             node.className.match(/(^|\s)fa(\s|$)/i) ||
             node.className.match(/(^|\s)(text|bg)-/i) ||
-            (node.attributes.style && node.attributes.style.value.match(/(^|\s)(color|background-color):/i)))) );
+            (node.attributes.style && node.attributes.style.value.match(/(^|\s)(color|background-color|font-size):/i)))) );
 };
 dom.isVisibleText = function (textNode) {
   return !!textNode.textContent.match(/\S|\u00A0/);
@@ -944,8 +946,7 @@ options.keyMap.pc['ESCAPE'] = 'cancel';
 options.keyMap.mac['SHIFT+TAB'] = 'untab';
 
 options.keyMap.mac['BACKSPACE'] = 'backspace';
-options.keyMap.mac['CMD+BACKSPACE'] = 'delete';
-options.keyMap.mac['SHIFT+BACKSPACE'] = 'delete';
+options.keyMap.mac['DELETE'] = 'delete';
 options.keyMap.mac['ENTER'] = 'enter';
 options.keyMap.mac['ESCAPE'] = 'cancel';
 
@@ -1193,9 +1194,11 @@ function remove_table_content(sc, ec) {
 $.summernote.pluginEvents.delete = function (event, editor, layoutInfo) {
     var $editable = layoutInfo.editable();
     $editable.data('NoteHistory').recordUndo($editable, "delete");
-    
+
     var r = range.create();
+    if (!r) return;
     if (!r.isContentEditable()) {
+        event.preventDefault();
         return false;
     }
     if (!r.isCollapsed()) {
@@ -1204,8 +1207,6 @@ $.summernote.pluginEvents.delete = function (event, editor, layoutInfo) {
         }
         r = r.deleteContents();
         r.select();
-        event.preventDefault();
-        return false;
     }
 
     var target = r.ec;
@@ -1234,6 +1235,7 @@ $.summernote.pluginEvents.delete = function (event, editor, layoutInfo) {
     if (dom.isImg(node) || (!contentAfter && dom.isImg(dom.hasContentAfter(node)))) {
         var parent;
         var index;
+        var rng;
         if (!dom.isImg(node)) {
             node = dom.hasContentAfter(node);
         }
@@ -1242,13 +1244,16 @@ $.summernote.pluginEvents.delete = function (event, editor, layoutInfo) {
             index = dom.position(node);
             if (index>0) {
                 var next = node.previousSibling;
-                range.create(next,next.textContent.length).select();
+                rng = range.create(next, next.textContent.length);
+            } else {
+                rng = range.create(parent, 0);
             }
             if (!dom.hasContentAfter(node) && !dom.hasContentBefore(node)) {
                 parent.appendChild($('<br/>')[0]);
             }
             parent.removeChild(node);
             node = parent;
+            rng.select();
         }
     }
     // empty tag
@@ -1331,8 +1336,6 @@ $.summernote.pluginEvents.backspace = function (event, editor, layoutInfo) {
         }
         r = r.deleteContents();
         r.select();
-        event.preventDefault();
-        return false;
     }
 
     var target = r.sc;
@@ -1812,7 +1815,6 @@ eventHandler.toolbar.button.updateRecentColor = function (elBtn, sEvent, sValue)
             font.style.backgroundColor = sValue !== 'inherit' ? sValue : "";
         }
     }
-    event.preventDefault();
     return false;
 };
 
@@ -2236,8 +2238,6 @@ function summernote_paste (event) {
         if (!r.isCollapsed()) {
             r = r.deleteContents();
             r.select();
-            event.preventDefault();
-            return false;
         }
 
             var text = $('<div />').text(clipboardData.getData("text/plain").toString()).html();

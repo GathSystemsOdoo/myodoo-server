@@ -202,7 +202,7 @@ var FormView = View.extend(common.FieldManagerMixin, {
      **/
     render_sidebar: function($node) {
         if (!this.sidebar && this.options.sidebar) {
-            this.sidebar = new Sidebar(this);
+            this.sidebar = new Sidebar(this, {editable: this.is_action_enabled('edit')});
             if (this.fields_view.toolbar) {
                 this.sidebar.add_toolbar(this.fields_view.toolbar);
             }
@@ -794,14 +794,15 @@ var FormView = View.extend(common.FieldManagerMixin, {
         });
         return def.promise();
     },
-    can_be_discarded: function() {
+    can_be_discarded: function(message) {
         if (!this.$el.is('.oe_form_dirty')) {
             return $.Deferred().resolve();
         }
 
+        message = message || _t("The record has been modified, your changes will be discarded. Are you sure you want to leave this page ?");
+
         var self = this;
         var def = $.Deferred();
-        var message = _t("The record has been modified, your changes will be discarded. Are you sure you want to leave this page ?");
         var options = {
             title: _t("Warning"),
             confirm_callback: function() {

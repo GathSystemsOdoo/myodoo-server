@@ -4,6 +4,14 @@
 from openerp.osv import fields, osv
 from openerp.tools.translate import _
 
+
+class sale_order_line(osv.osv):
+    _inherit = 'sale.order.line'
+
+    def _get_analytic_track_service(self, cr, uid, context=None):
+        return super(sale_order_line, self)._get_analytic_track_service(cr, uid, context=context) + ['task']
+
+
 class procurement_order(osv.osv):
     _name = "procurement.order"
     _inherit = "procurement.order"
@@ -47,9 +55,15 @@ class procurement_order(osv.osv):
         if not project and procurement.sale_line_id:
             # find the project corresponding to the analytic account of the sales order
             account = procurement.sale_line_id.order_id.project_id
+            if not account:
+                procurement.sale_line_id.order_id._create_analytic_account()
+                account = procurement.sale_line_id.order_id.project_id
             project_ids = project_project.search(cr, uid, [('analytic_account_id', '=', account.id)])
             projects = project_project.browse(cr, uid, project_ids, context=context)
-            project = projects and projects[0] or False
+            project = projects and projects[0]
+            if not project:
+                project_id = account.project_create({'name': account.name, 'use_tasks': True})
+                project = project_project.browse(cr, uid, project_id, context=context)
         return project
 
     def _create_service_task(self, cr, uid, procurement, context=None):
@@ -118,5 +132,6 @@ class project_task(osv.osv):
             if stage.closed:
                 self._validate_subflows(cr, uid, ids, context=context)
         return res
+
 
 

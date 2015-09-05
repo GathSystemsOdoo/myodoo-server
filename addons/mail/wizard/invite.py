@@ -5,7 +5,7 @@ from openerp import tools
 
 
 class Invite(models.TransientModel):
-    """ Wizard to invite partners and make them followers. """
+    """ Wizard to invite partners (or channels) and make them followers. """
     _name = 'mail.wizard.invite'
     _description = 'Invite wizard'
 
@@ -15,6 +15,8 @@ class Invite(models.TransientModel):
         user_name = self.env.user.name_get()[0][1]
         model = result.get('res_model')
         res_id = result.get('res_id')
+        if self._context.get('mail_invite_follower_channel_only'):
+            result['send_mail'] = False
         if 'message' in fields and model and res_id:
             model_name = self.env['ir.model'].search([('model', '=', self.pool[model]._name)]).name_get()[0][1]
             document_name = self.env[model].browse(res_id).name_get()[0][1]
@@ -45,7 +47,6 @@ class Invite(models.TransientModel):
 
             model_ids = self.env['ir.model'].search([('model', '=', wizard.res_model)])
             model_name = model_ids.name_get()[0][1]
-
             # send an email if option checked and if a message exists (do not send void emails)
             if wizard.send_mail and wizard.message and not wizard.message == '<br>':  # when deleting the message, cleditor keeps a <br>
                 # TDE FIXME: use a template + _notification methods

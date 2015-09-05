@@ -346,6 +346,9 @@ class MailThread(models.AbstractModel):
                         ('res_model', 'in', [False, self._name]),
                         ('internal', '=', True)], ['name', 'description', 'sequence'])
                     options['internal_subtypes'] = internal_subtypes
+                # emoji list
+                options['emoji_list'] = self.env['mail.shortcode'].search([('shortcode_type', '=', 'image')]).read(['source', 'description', 'substitution'])
+                # save options on the node
                 node.set('options', json.dumps(options))
             res['arch'] = etree.tostring(doc)
         return res
@@ -501,7 +504,7 @@ class MailThread(models.AbstractModel):
         """ When redirecting towards the Inbox, choose which action xml_id has
             to be fetched. This method is meant to be inherited, at least in portal
             because portal users have a different Inbox action than classic users. """
-        return 'mail.mail_message_action_inbox'
+        return 'mail.mail_channel_action_client_chat'
 
     @api.multi
     def _notification_link_helper(self, link_type, **kwargs):
@@ -1392,16 +1395,18 @@ class MailThread(models.AbstractModel):
         return result
 
     @api.multi
-    def _find_partner_from_emails(self, emails, res_model=None, res_id=None, check_followers=True):
+    def _find_partner_from_emails(self, emails, res_model=None, res_id=None, check_followers=True, force_create=False):
         """ Utility method to find partners from email addresses. The rules are :
             1 - check in document (model | self, id) followers
             2 - try to find a matching partner that is also an user
             3 - try to find a matching partner
+            4 - create a new one if force_create = True
 
             :param list emails: list of email addresses
             :param string model: model to fetch related record; by default self
                 is used.
             :param boolean check_followers: check in document followers
+            :param boolean force_create: create a new partner if not found
         """
         if res_model is None:
             res_model = self._name
@@ -1449,6 +1454,8 @@ class MailThread(models.AbstractModel):
                     partners = Partner.search([('email', 'ilike', email_brackets)], limit=1)
                 if partners:
                     partner_id = partners[0].id
+            if not partner_id and force_create:
+                partner_id = self.env['res.partner'].name_create(contact)[0]
             partner_ids.append(partner_id)
         return partner_ids
 
@@ -1656,6 +1663,33 @@ class MailThread(models.AbstractModel):
             self.message_subscribe([new_message.author_id.id])
         return new_message
 
+    @api.multi
+    def message_post_with_template(self, template_id, **kwargs):
+        """ Helper method to send a mail with a template
+            :param template_id : the id of the template to render to create the body of the message
+            :param **kwargs : parameter to create a mail.compose.message woaerd (which inherit from mail.message)
+        """
+        # Get composition mode, or force it according to the number of record in self
+        composition_mode = kwargs.get('composition_mode')
+        if not composition_mode:
+            composition_mode = 'comment' if len(self.ids) == 1 else 'mass_mail'
+        res_id = self.ids[0] or 0
+        # Create the composer
+        composer = self.env['mail.compose.message'].with_context(
+            active_ids=self.ids,
+            active_model=self._name,
+            default_composition_mode=composition_mode,
+            default_model=self._name,
+            default_res_id=self.ids[0] or 0,
+            default_template_id=template_id,
+        ).create(kwargs)
+        # Simulate the onchange (like trigger in form the view) only
+        # when having a template in single-email mode
+        if template_id:
+            update_values = composer.onchange_template_id(template_id, composition_mode, self._name, res_id)['value']
+            composer.write(update_values)
+        return composer.send_mail()
+
     # ------------------------------------------------------
     # Followers API
     # ------------------------------------------------------
@@ -1851,9 +1885,9 @@ class MailThread(models.AbstractModel):
 
     @api.multi
     def message_set_read(self):
-        # Nothing done here currently. Will be implemented with the final
-        # slack modeling.
-        return True
+        messages = self.env['mail.message'].search([('model', '=', self._name), ('res_id', 'in', self.ids), ('needaction', '=', True)])
+        messages.write({'needaction_partner_ids': [(3, self.env.user.partner_id.id)]})
+        return messages.ids
 
     @api.multi
     def message_change_thread(self, new_thread):

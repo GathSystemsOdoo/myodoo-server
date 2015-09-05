@@ -170,7 +170,7 @@
                         </group>
                         <group>
                             <field name="date_order" invisible="1"/>
-                            <field domain="[('type','=','sale')]" name="pricelist_id" groups="product.group_sale_pricelist"/>
+                            <field name="pricelist_id" groups="product.group_sale_pricelist"/>
                             <field name="currency_id" invisible="1"/>
                             <field name="validity_date"/>
                             <field name="payment_term_id" options="{'no_create': True}"/>
@@ -292,10 +292,10 @@
                             <group class="oe_subtotal_footer oe_right" colspan="2" name="sale_total">
                                 <field name="amount_untaxed" widget='monetary' options="{'currency_field': 'currency_id'}"/>
                                 <field name="amount_tax" widget='monetary' options="{'currency_field': 'currency_id'}"/>
-                                <div class="oe_subtotal_footer_separator oe_inline">
+                                <div class="oe_subtotal_footer_separator oe_inline o_td_label">
                                     <label for="amount_total" />
-                                    <!-- <button name="button_dummy"
-                                        states="draft,sent" string="(update)" type="object" class="oe_edit_only oe_link"/> -->
+                                    <button name="button_dummy"
+                                        states="draft,sent" string="(update)" type="object" class="oe_edit_only oe_link"/>
                                 </div>
                                 <field name="amount_total" nolabel="1" class="oe_subtotal_footer_separator" widget='monetary' options="{'currency_field': 'currency_id'}"/>
                             </group>
@@ -403,6 +403,7 @@
             <field name="res_model">sale.order</field>
             <field name="view_type">form</field>
             <field name="view_mode">tree,form,calendar,graph,pivot</field>
+            <field name="context">{'show_sale': True}</field>
             <field name="domain">[('invoice_status','=','to invoice')]</field>
         </record>
         <menuitem name="Invoicing"
@@ -413,7 +414,7 @@
             sequence="2"/>
 
         <record id="action_orders_upselling" model="ir.actions.act_window">
-            <field name="name">Upselling Opportunities</field>
+            <field name="name">Orders to Upsell</field>
             <field name="type">ir.actions.act_window</field>
             <field name="res_model">sale.order</field>
             <field name="view_type">form</field>
@@ -438,14 +439,13 @@
             <field name="search_view_id" ref="view_sales_order_filter"/>
             <field name="help" type="html">
               <p class="oe_view_nocontent_create">
-                Click to create a quotation, the first step of a new sale.
+                Create a Quotation, the first step of a new sale.
               </p><p>
-                Odoo will help you handling efficiently the complete sale flow:
-                from the quotation to the sales order, the
-                delivery, the invoicing and the payment collection.
+                Your next actions should flow efficiently: confirm the Quotation 
+                to a Sale Order, then create the Invoice and collect the Payment.
               </p><p>
-                The social feature helps you organizing discussions on each sales
-                order, and allows your customers to keep track of the sales orders' evolution.
+                Note that once a Quotation becomes a Sale Order, it will be moved 
+                from the Quotations list to the Sales Order list.
               </p>
             </field>
         </record>
@@ -649,14 +649,13 @@
             <field name="search_view_id" ref="sale.view_sales_order_filter"/>
             <field name="help" type="html">
               <p class="oe_view_nocontent_create">
-                Click to create a quotation, the first step of a new sale.
+                Create a Quotation, the first step of a new sale.
               </p><p>
-                Odoo will help you handling efficiently the complete sale flow:
-                from the quotation to the sales order, the
-                delivery, the invoicing and the payment collection.
+                Your next actions should flow efficiently: confirm the Quotation 
+                to a Sale Order, then create the Invoice and collect the Payment.
               </p><p>
-                The social feature helps you organizing discussions on each sales
-                order, and allows your customers to keep track of the sales orders' evolution.
+                Note that once a Quotation becomes a Sale Order, it will be moved 
+                from the Quotations list to the Sales Order list.
               </p>
             </field>
         </record>
