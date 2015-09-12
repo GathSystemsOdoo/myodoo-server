@@ -29,12 +29,13 @@
                         <div class="oe_title" name="title">
                             <label for="name" string="Name" class="oe_edit_only"/>
                             <h1>
-                                <field name="name"/>
+                                <field name="name" placeholder="e.g. USPS Express"/>
                             </h1>
                             <group name="company">
                                 <field name="partner_id" class="oe_inline"/>
                                 <field name="product_type" invisible="1"/>
                                 <field name="product_sale_ok" invisible="1"/>
+                                <field name="shipping_enabled" attrs="{'invisible': ['|', ('delivery_type', '=', 'fixed'), ('delivery_type', '=', 'base_on_rule')]}"/>
                             </group>
                         </div>
                         <notebook>
@@ -192,6 +193,17 @@
                 <xpath expr="//field[@name='date_expected']" position="after">
                     <field name="weight"/>
                 </xpath>
+            </field>
+        </record>
+
+        <record id="view_quant_package_weight_form" model="ir.ui.view">
+            <field name="name">stock.quant.package.weight.form</field>
+            <field name="model">stock.quant.package</field>
+            <field name="inherit_id" ref="stock.view_quant_package_form"/>
+            <field name="arch" type="xml">
+                <field name="company_id" position="before">
+                    <field name="weight"/>
+                </field>
             </field>
         </record>
 

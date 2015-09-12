@@ -20,7 +20,7 @@ class SaleOrder(models.Model):
     _description = "Sales Order"
     _order = 'date_order desc, id desc'
 
-    @api.depends('order_line.product_uom_qty', 'order_line.discount', 'order_line.price_unit', 'order_line.tax_id')
+    @api.depends('order_line.price_total')
     def _amount_all(self):
         amount_untaxed = amount_tax = 0.0
         for line in self.order_line:
@@ -78,7 +78,7 @@ class SaleOrder(models.Model):
         ('sale', 'Sale Order'),
         ('done', 'Done'),
         ('cancel', 'Cancelled'),
-        ], string='Status', readonly=True, copy=False, index=True, default='draft')
+        ], string='Status', readonly=True, copy=False, index=True, track_visibility='onchange', default='draft')
     date_order = fields.Datetime(string='Order Date', required=True, readonly=True, index=True, states={'draft': [('readonly', False)], 'sent': [('readonly', False)]}, copy=False, default=fields.Date.context_today)
     validity_date = fields.Date(string='Expiration Date', readonly=True, states={'draft': [('readonly', False)], 'sent': [('readonly', False)]})
     create_date = fields.Datetime(string='Creation Date', readonly=True, index=True, help="Date on which sales order is created.")
@@ -182,7 +182,6 @@ class SaleOrder(models.Model):
             vals['partner_shipping_id'] = vals.setdefault('partner_shipping_id', addr['delivery'])
             vals['pricelist_id'] = vals.setdefault('pricelist_id', partner.property_product_pricelist and partner.property_product_pricelist.id)
         result = super(SaleOrder, self).create(vals)
-        self.message_post(body=_("Quotation created"))
         return result
 
     @api.multi
@@ -221,7 +220,7 @@ class SaleOrder(models.Model):
 
     @api.multi
     def action_view_invoice(self):
-        self.ensure_one()
+        invoice_ids = self.mapped('invoice_ids')
         imd = self.env['ir.model.data']
         action = imd.xmlid_to_object('account.action_invoice_tree1')
         list_view_id = imd.xmlid_to_res_id('account.invoice_tree')
@@ -236,11 +235,11 @@ class SaleOrder(models.Model):
             'context': action.context,
             'res_model': action.res_model,
         }
-        if len(self.invoice_ids) > 1:
-            result['domain'] = "[('id','in',%s)]" % self.invoice_ids.ids
-        elif len(self.invoice_ids) == 1:
+        if len(invoice_ids) > 1:
+            result['domain'] = "[('id','in',%s)]" % invoice_ids.ids
+        elif len(invoice_ids) == 1:
             result['views'] = [(form_view_id, 'form')]
-            result['res_id'] = self.invoice_ids.id
+            result['res_id'] = invoice_ids.ids[0]
         else:
             result = {'type': 'ir.actions.act_window_close'}
         return result
@@ -445,7 +444,7 @@ class SaleOrderLine(models.Model):
                     taxes = fpos.map_tax(line.product_id.taxes_id)
                 line.tax_id = taxes
             else:
-                line.tax_id = False
+                line.tax_id = line.product_id.taxes_id if line.product_id.taxes_id else False
 
     @api.multi
     def _prepare_order_line_procurement(self, group_id=False):

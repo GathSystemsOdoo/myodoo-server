@@ -45,13 +45,13 @@
                     <button name="open_rfq" type="object" string="RFQs/Bids" class="oe_stat_button" icon="fa-list-alt"
                         attrs="{'invisible': [('state', '=', 'draft')]}"/>
                     <button name="%(action_purchase_requisition_partner)d" type="action"
-                        string="Request a Quotation" icon="gtk-execute"
+                        string="Request a Quotation" icon="fa-cogs"
                         attrs="{'invisible': ['|', ('line_ids','=',[]),('state', 'in', ('draft' ,'open','done'))]}"/>
                 </div>
                 <div class="pull-left">
                     <label for="name" class="oe_edit_only oe_inline"/>
                     <h1>
-                        <field name="name" class="oe_inline" attrs="{'readonly': [('state','not in',('draft'))]}"/>
+                        <field name="name" attrs="{'readonly': [('state','not in',('draft'))]}"/>
                     </h1>
                 </div>
                 <group>

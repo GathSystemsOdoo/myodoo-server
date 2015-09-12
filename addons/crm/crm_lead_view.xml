@@ -48,6 +48,7 @@
                     <group>
                         <field name="name"/>
                         <field name="team_id"/>
+                        <field name="color"/>
                     </group>
                 </form>
             </field>
@@ -60,6 +61,7 @@
                 <tree string="Sales Tags">
                     <field name="name"/>
                     <field name="team_id"/>
+                    <field name="color"/>
                 </tree>
             </field>
         </record>
@@ -290,6 +292,7 @@
                     <field name="tag_ids"/>
                     <field name="partner_id"/>
                     <field name="active"/>
+                    <field name="company_currency"/>
                     <templates>
                         <field name="date_deadline"/>
                         <t t-name="kanban-box">
@@ -315,7 +318,7 @@
                                         <strong><field name="name"/></strong>
                                     </div>
                                     <div class="text-muted">
-                                        <span t-if="record.planned_revenue.raw_value"><t t-esc="record.planned_revenue.value"/><field name="company_currency"/></span> <span t-if="record.partner_id.value"> - <t t-esc="record.partner_id.value"/></span>
+                                        <t t-if="record.planned_revenue.raw_value"><field name="planned_revenue" widget="monetary" options="{'currency_field': 'company_currency'}"/></t> <span t-if="record.partner_id.value"> - <t t-esc="record.partner_id.value"/></span>
                                     </div>
                                     <div class="text-muted">
                                         <t t-if="record.date_deadline.raw_value and record.date_deadline.raw_value lt (new Date())" t-set="red">oe_kanban_text_red</t>
@@ -473,29 +476,36 @@
                                 <label for="next_activity_id"/>
                                 <div>
                                     <field name="last_activity_id" invisible="1"/>
-                                    <field name="next_activity_id"
-                                        class="oe_inline" options="{'no_create': True, 'no_open': True}"
-                                        domain="['|',('team_id','=',False),('team_id','=',team_id)]"
-                                        on_change="onchange_next_activity_id(next_activity_id)"/>
-                                    <span attrs="{'invisible': ['|', ('last_activity_id','=',False), ('next_activity_id', '&lt;&gt;', False)]}" class="oe_edit_only">
-                                        <button name="log_next_activity_1" type="object" class="btn-link" attrs="{'invisible': [('next_activity_1','=',False)]}">
-                                            <field name="next_activity_1" class="oe_inline" readonly="1"/>
-                                        </button>
-                                        <button name="log_next_activity_2" type="object" class="btn-link" attrs="{'invisible': [('next_activity_2','=',False)]}">
-                                            <field name="next_activity_2" class="oe_inline" readonly="1"/>
-                                        </button>
-                                        <button name="log_next_activity_3" type="object" class="btn-link" attrs="{'invisible': [('next_activity_3','=',False)]}">
-                                            <field name="next_activity_3" class="oe_inline" readonly="1"/>
-                                        </button>
-                                    </span>
-                                    <span class="oe_form_field oe_read_only oe_inline"
-                                        attrs="{'invisible': ['|', ('next_activity_id', '=', False), ('date_action', '=', False)]}">&#160;on&#160;</span>
-                                    <field name="date_action" nolabel="1" attrs="{'invisible': [('next_activity_id', '=', False)]}" placeholder="Choose a date..." class="oe_inline"/>
-                                    <field name="title_action" nolabel="1" placeholder="e.g. Discuss proposal"
-                                        attrs="{'invisible': [('next_activity_id', '=', False)]}"/>
-                                    <div class="oe_edit_only" attrs="{'invisible': [('next_activity_id', '=', False)]}">
-                                        <button name="log_next_activity_done" string="Done" type="object" class="btn-link"/>
-                                        <button name="cancel_next_activity" string="Cancel" type="object" class="btn-link"/>
+                                    
+                                    <div class="o_row">
+                                        <field name="next_activity_id"
+                                               options="{'no_create': True, 'no_open': True}"
+                                               domain="['|',('team_id','=',False),('team_id','=',team_id)]"
+                                               on_change="onchange_next_activity_id(next_activity_id)"/>
+                                        <span attrs="{'invisible': ['|', ('last_activity_id','=',False), ('next_activity_id', '&lt;&gt;', False)]}" class="oe_edit_only">
+                                            <button name="log_next_activity_1" type="object" class="btn-link" attrs="{'invisible': [('next_activity_1','=',False)]}">
+                                                <field name="next_activity_1" readonly="1"/>
+                                            </button>
+                                            <button name="log_next_activity_2" type="object" class="btn-link" attrs="{'invisible': [('next_activity_2','=',False)]}">
+                                                <field name="next_activity_2" readonly="1"/>
+                                            </button>
+                                            <button name="log_next_activity_3" type="object" class="btn-link" attrs="{'invisible': [('next_activity_3','=',False)]}">
+                                                <field name="next_activity_3" readonly="1"/>
+                                            </button>
+                                        </span>
+                                        <span class="oe_read_only oe_form_field"
+                                              attrs="{'invisible': ['|', ('next_activity_id', '=', False), ('date_action', '=', False)]}">&#160;on&#160;</span>
+                                        <field name="date_action" attrs="{'invisible': [('next_activity_id', '=', False)]}" placeholder="Choose a date..."/>
+                                        <span class="oe_read_only oe_form_field"
+                                              attrs="{'invisible': ['|', ('next_activity_id', '=', False), ('title_action', '=', False)]}">:&#160;</span>
+                                    </div>
+                                    <div class="o_row">
+                                        <field name="title_action" placeholder="e.g. Discuss proposal"
+                                               attrs="{'invisible': [('next_activity_id', '=', False)]}"/>
+                                        <span class="oe_edit_only" attrs="{'invisible': [('next_activity_id', '=', False)]}">
+                                            <button name="log_next_activity_done" string="Done" type="object" class="btn-link"/>
+                                            <button name="cancel_next_activity" string="Cancel" type="object" class="btn-link"/>
+                                        </span>
                                     </div>
                                 </div>
                                 <field name="date_deadline"/>
