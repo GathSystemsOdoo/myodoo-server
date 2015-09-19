@@ -22,35 +22,42 @@ class SaleOrder(models.Model):
 
     @api.depends('order_line.price_total')
     def _amount_all(self):
-        amount_untaxed = amount_tax = 0.0
-        for line in self.order_line:
-            amount_untaxed += line.price_subtotal
-            amount_tax += line.price_tax
-        self.update({
-            'amount_untaxed': self.pricelist_id.currency_id.round(amount_untaxed),
-            'amount_tax': self.pricelist_id.currency_id.round(amount_tax),
-            'amount_total': amount_untaxed + amount_tax,
-        })
+        for order in self:
+            amount_untaxed = amount_tax = 0.0
+            for line in order.order_line:
+                amount_untaxed += line.price_subtotal
+                amount_tax += line.price_tax
+            order.update({
+                'amount_untaxed': order.pricelist_id.currency_id.round(amount_untaxed),
+                'amount_tax': order.pricelist_id.currency_id.round(amount_tax),
+                'amount_total': amount_untaxed + amount_tax,
+            })
 
     @api.depends('state', 'order_line.invoice_status')
     def _get_invoiced(self):
         for order in self:
-            invoice_ids = order.order_line.mapped('invoice_lines').mapped('invoice_id').ids
+            invoice_ids = order.order_line.mapped('invoice_lines').mapped('invoice_id')
+            # Search for refunds as well
+            refund_ids = self.env['account.invoice'].browse()
+            if invoice_ids:
+                refund_ids = refund_ids.search([('type', '=', 'out_refund'), ('origin', 'in', invoice_ids.mapped('number'))])
+
+            line_invoice_status = [line.invoice_status for line in order.order_line]
 
             if order.state not in ('sale', 'done'):
                 invoice_status = 'no'
-            elif any(line.invoice_status == 'to invoice' for line in order.order_line):
+            elif any(invoice_status == 'to invoice' for invoice_status in line_invoice_status):
                 invoice_status = 'to invoice'
-            elif all(line.invoice_status == 'invoiced' for line in order.order_line):
+            elif all(invoice_status == 'invoiced' for invoice_status in line_invoice_status):
                 invoice_status = 'invoiced'
-            elif all(line.invoice_status in ['invoiced', 'upselling'] for line in order.order_line):
+            elif all(invoice_status in ['invoiced', 'upselling'] for invoice_status in line_invoice_status):
                 invoice_status = 'upselling'
             else:
                 invoice_status = 'no'
 
             order.update({
-                'invoice_count': len(set(invoice_ids)),
-                'invoice_ids': invoice_ids,
+                'invoice_count': len(set(invoice_ids.ids + refund_ids.ids)),
+                'invoice_ids': invoice_ids.ids + refund_ids.ids,
                 'invoice_status': invoice_status
             })
 
@@ -94,7 +101,7 @@ class SaleOrder(models.Model):
 
     order_line = fields.One2many('sale.order.line', 'order_id', string='Order Lines', states={'cancel': [('readonly', True)], 'done': [('readonly', True)]}, copy=True)
 
-    invoice_count = fields.Integer(string='# of Invoices', compute='_get_invoiced', store=True, readonly=True)
+    invoice_count = fields.Integer(string='# of Invoices', compute='_get_invoiced', readonly=True)
     invoice_ids = fields.Many2many("account.invoice", string='Invoices', compute="_get_invoiced", readonly=True, copy=False)
     invoice_status = fields.Selection([
         ('upselling', 'Upselling Opportunity'),
@@ -261,7 +268,7 @@ class SaleOrder(models.Model):
                     invoices[group_key] = invoice
                 if line.qty_to_invoice > 0:
                     line.invoice_line_create(invoices[group_key].id, line.qty_to_invoice)
-                elif line.qty_to_invoice < 0 and (final or invoices[group_key].amount_untaxed > abs(line.qty_to_invoice * line.price_unit)):
+                elif line.qty_to_invoice < 0 and final:
                     line.invoice_line_create(invoices[group_key].id, line.qty_to_invoice)
 
         for invoice in invoices.values():
@@ -464,6 +471,7 @@ class SaleOrderLine(models.Model):
     @api.multi
     def _action_procurement_create(self):
         precision = self.env['decimal.precision'].precision_get('Product Unit of Measure')
+        new_procs = self.env['procurement.order'] #Empty recordset
         for line in self:
             if line.state != 'sale':
                 continue
@@ -480,8 +488,9 @@ class SaleOrderLine(models.Model):
             vals = line._prepare_order_line_procurement(group_id=line.order_id.procurement_group_id.id)
             vals['product_qty'] = line.product_uom_qty - qty
             new_proc = self.env["procurement.order"].create(vals)
-            new_proc.run()
-        return True
+            new_procs += new_proc
+        new_procs.run()
+        return new_procs
 
     @api.model
     def _get_analytic_invoice_policy(self):
@@ -505,13 +514,15 @@ class SaleOrderLine(models.Model):
     # Create new procurements if quantities purchased changes
     @api.multi
     def write(self, values):
-        precision = self.env['decimal.precision'].precision_get('Product Unit of Measure')
         lines = False
         if 'product_uom_qty' in values:
+            precision = self.env['decimal.precision'].precision_get('Product Unit of Measure')
             lines = self.filtered(
                 lambda r: r.state == 'sale' and float_compare(r.product_uom_qty, values['product_uom_qty'], precision_digits=precision) == -1)
+        result = super(SaleOrderLine, self).write(values)
+        if lines:
             lines._action_procurement_create()
-        return super(SaleOrderLine, self).write(values)
+        return result
 
     order_id = fields.Many2one('sale.order', string='Order Reference', required=True, ondelete='cascade', index=True, copy=False)
     name = fields.Text(string='Description', required=True)
