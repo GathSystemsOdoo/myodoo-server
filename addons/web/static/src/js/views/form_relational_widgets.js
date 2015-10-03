@@ -1467,17 +1467,18 @@ var FieldMany2ManyTags = AbstractManyField.extend(common.CompletionFieldMixin, c
         }
     },
     open_color_picker: function(ev){
+        this.mutex.exec(function(){
+            if (this.fields.color) {
+                this.$color_picker = $(QWeb.render('FieldMany2ManyTag.colorpicker', {
+                    'widget': this,
+                    'tag_id': $(ev.currentTarget).data('id'),
+                }));
 
-        if (this.fields.color) {
-            this.$color_picker = $(QWeb.render('FieldMany2ManyTag.colorpicker', {
-                'widget': this,
-                'tag_id': $(ev.currentTarget).data('id'),
-            }));
-
-            $(ev.currentTarget).append(this.$color_picker);
-            this.$color_picker.dropdown('toggle');
-            this.$color_picker.attr("tabindex", 1).focus();
-        }
+                $(ev.currentTarget).append(this.$color_picker);
+                this.$color_picker.dropdown('toggle');
+                this.$color_picker.attr("tabindex", 1).focus();
+            }
+        }.bind(this));
     },
     close_color_picker: function(){
         this.$color_picker.remove();
@@ -1489,7 +1490,9 @@ var FieldMany2ManyTags = AbstractManyField.extend(common.CompletionFieldMixin, c
         var id = $(ev.currentTarget).data('id');
 
         var self = this;
-        this.dataset._model.call('write', [id, {'color': color}]).done(function(){
+        this.dataset.call('write', [id, {'color': color}]).done(function(){
+            self.dataset.cache[id].from_read = {};
+            self.dataset.evict_record(id);
             var tag = self.$el.find("span.badge[data-id='" + id + "']");
             var old_color = tag.data('color');
             tag.removeClass('o_tag_color_' + old_color);
