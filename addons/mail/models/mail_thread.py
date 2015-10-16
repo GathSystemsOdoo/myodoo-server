@@ -63,7 +63,8 @@ class MailThread(models.AbstractModel):
     _mail_post_access = 'write'  # access required on the document to post on it
     _mail_mass_mailing = False  # enable mass mailing on this model
 
-    message_is_follower = fields.Boolean('Is Follower', compute='_compute_is_follower')
+    message_is_follower = fields.Boolean(
+        'Is Follower', compute='_compute_is_follower', search='_search_is_follower')
     message_follower_ids = fields.One2many(
         'mail.followers', 'res_id', string='Followers',
         domain=lambda self: [('res_model', '=', self._name)])
@@ -135,6 +136,18 @@ class MailThread(models.AbstractModel):
         for record in self:
             record.message_is_follower = record.id in following_ids
 
+    @api.model
+    def _search_is_follower(self, operator, operand):
+        followers = self.env['mail.followers'].sudo().search([
+            ('res_model', '=', self._name),
+            ('partner_id', '=', self.env.user.partner_id.id),
+            ])
+        # Cases ('message_is_follower', '=', True) or  ('message_is_follower', '!=', False)
+        if (operator == '=' and operand) or (operator == '!=' and not operand):
+            return [('id', 'in', followers.mapped('res_id'))]
+        else:
+            return [('id', 'not in', followers.mapped('res_id'))]
+
     @api.multi
     def _get_message_unread(self):
         res = dict((res_id, 0) for res_id in self.ids)
@@ -169,7 +182,7 @@ class MailThread(models.AbstractModel):
 
         for record in self:
             record.message_needaction_counter = res.get(record.id, 0)
-            record.message_needaction = bool(record.message_unread_counter)
+            record.message_needaction = bool(record.message_needaction_counter)
 
     @api.model
     def _search_message_needaction(self, operator, operand):
@@ -242,12 +255,12 @@ class MailThread(models.AbstractModel):
         # Perform write
         result = super(MailThread, self).write(values)
 
+        # update followers
+        self.message_auto_subscribe(values.keys(), values=values)
+
         # Perform the tracking
         if tracked_fields:
             track_self.message_track(tracked_fields, initial_values)
-
-        # update followers
-        self.message_auto_subscribe(values.keys(), values=values)
 
         return result
 
@@ -583,9 +596,10 @@ class MailThread(models.AbstractModel):
         # At this point, all access rights should be ok. We sudo everything to
         # access rights checks and speedup the computation.
         recipients_sudo = recipients.sudo()
-        # message_sudo = message.sudo()
-
-        access_link = self._notification_link_helper('view', message_id=message.id)
+        if self._context.get('auto_delete', False):
+            access_link = self._notification_link_helper('view')
+        else:
+            access_link = self._notification_link_helper('view', message_id=message.id)
 
         if message.model:
             model_name = self.env['ir.model'].sudo().search([('model', '=', self.env[message.model]._name)]).name_get()[0][1]
@@ -1568,6 +1582,8 @@ class MailThread(models.AbstractModel):
         # 1: Handle content subtype: if plaintext, converto into HTML
         if content_subtype == 'plaintext':
             body = tools.plaintext2html(body)
+        else:
+            body = tools.html_keep_url(body)
 
         # 2: Private message: add recipients (recipients and author of parent message) - current author
         #   + legacy-code management (! we manage only 4 and 6 commands)
@@ -1651,7 +1667,10 @@ class MailThread(models.AbstractModel):
         new_message = MailMessage.create(values)
 
         # Post-process: subscribe author, update message_last_post
-        if model and model != 'mail.thread' and self.ids and subtype_id:
+        # Note: the message_last_post mechanism is no longer used.  This
+        # will be removed in a later version.
+        if (self._context.get('mail_save_message_last_post') and
+                model and model != 'mail.thread' and self.ids and subtype_id):
             subtype_rec = self.env['mail.message.subtype'].sudo().browse(subtype_id)
             if not subtype_rec.internal:
                 # done with SUPERUSER_ID, because on some models users can post only with read access, not necessarily write access
@@ -1826,7 +1845,7 @@ class MailThread(models.AbstractModel):
                             to get the values. Added after releasing 7.0, therefore
                             not merged with updated_fields argumment.
         """
-        new_followers = dict()
+        new_partners, new_channels = dict(), dict()
 
         # fetch auto_follow_fields: res.users relation fields whose changes are tracked for subscription
         user_field_lst = self._message_get_auto_subscribe_fields(updated_fields)
@@ -1861,19 +1880,29 @@ class MailThread(models.AbstractModel):
             for header_follower in self.env['mail.followers'].sudo().search(header_domain):
                 for subtype in header_follower.subtype_ids:
                     if subtype.parent_id and subtype.parent_id.res_model == self._name:
-                        new_followers.setdefault(header_follower.partner_id.id, set()).add(subtype.parent_id.id)
+                        new_subtype = subtype.parent_id
                     elif subtype.res_model is False:
-                        new_followers.setdefault(header_follower.partner_id.id, set()).add(subtype.id)
+                        new_subtype = subtype
+                    else:
+                        continue
+                    if header_follower.partner_id:
+                        new_partners.setdefault(header_follower.partner_id.id, set()).add(new_subtype.id)
+                    else:
+                        new_channels.setdefault(header_follower.channel_id.id, set()).add(new_subtype.id)
 
         # add followers coming from res.users relational fields that are tracked
         user_ids = [values[name] for name in user_field_lst if values.get(name)]
         user_pids = [user.partner_id.id for user in self.env['res.users'].sudo().browse(user_ids)]
         for partner_id in user_pids:
-            new_followers.setdefault(partner_id, None)
+            new_partners.setdefault(partner_id, None)
 
-        for pid, subtypes in new_followers.items():
+        for pid, subtypes in new_partners.items():
             subtypes = list(subtypes) if subtypes is not None else None
-            self.message_subscribe([pid], subtype_ids=subtypes)
+            self.message_subscribe(partner_ids=[pid], subtype_ids=subtypes)
+        for cid, subtypes in new_channels.items():
+            subtypes = list(subtypes) if subtypes is not None else None
+            self.message_subscribe(channel_ids=[cid], subtype_ids=subtypes)
+
         # remove the current user from the needaction partner to avoid to notify the author of the message
         user_pids = [user_pid for user_pid in user_pids if user_pid != self.env.user.partner_id.id]
         self._message_auto_subscribe_notify(user_pids)

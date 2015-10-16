@@ -2,6 +2,7 @@ odoo.define('mail.ChatThread', function (require) {
 "use strict";
 
 var core = require('web.core');
+var time = require('web.time');
 var Widget = require('web.Widget');
 
 var QWeb = core.qweb;
@@ -19,12 +20,19 @@ var Thread = Widget.extend({
         "click .o_mail_redirect": "on_click_redirect",
         "click .o_thread_show_more": "on_click_show_more",
         "click .o_thread_message_needaction": function (event) {
+            event.stopPropagation();
             var message_id = $(event.currentTarget).data('message-id');
             this.trigger("mark_as_read", message_id);
         },
         "click .o_thread_message_star": function (event) {
+            event.stopPropagation();
             var message_id = $(event.currentTarget).data('message-id');
             this.trigger("toggle_star_status", message_id);
+        },
+        "click .o_thread_message": function (event) {
+            var selected = $(event.currentTarget).hasClass('o_thread_selected_message');
+            this.$('.o_thread_message').removeClass('o_thread_selected_message');
+            $(event.currentTarget).toggleClass('o_thread_selected_message', !selected);
         },
     },
 
@@ -33,6 +41,7 @@ var Thread = Widget.extend({
         this.options = _.defaults(options || {}, {
             display_order: ORDER.ASC,
             display_needactions: true,
+            display_stars: true,
             default_username: _t('Anonymous'),
             display_document_link: true,
             display_avatar: true,
@@ -44,6 +53,19 @@ var Thread = Widget.extend({
         if (this.options.display_order === ORDER.DESC) {
             msgs.reverse();
         }
+
+        // Hide avatar and info of a message if that message and the previous
+        // one are both comments wrote by the same author at the same minute
+        var prev_msg;
+        _.each(msgs, function (msg) {
+            if (!prev_msg || (Math.abs(moment(msg.date).diff(prev_msg.date)) > 60000) ||
+                prev_msg.message_type !== 'comment' || msg.message_type !== 'comment' ||
+                (prev_msg.author_id[0] !== msg.author_id[0])) {
+                msg.display_author = true;
+            }
+            prev_msg = msg;
+        });
+
         this.$el.html(QWeb.render('mail.ChatThread', {
             messages: msgs,
             options: _.extend({}, this.options, options),
@@ -65,15 +87,22 @@ var Thread = Widget.extend({
     _preprocess_message: function (message) {
         var msg = _.extend({}, message);
 
-        // Compute displayed author
-        if (!msg.author_id || !msg.author_id[1]) {
-            msg.displayed_author = msg.email_from || this.options.default_username;
+        // Set the date in the browser timezone
+        msg.date = moment(time.str_to_datetime(msg.date)).format('YYYY-MM-DD HH:mm:ss');
+
+        // Compute displayed author name or email
+        if ((!msg.author_id || !msg.author_id[0]) && msg.email_from) {
+            msg.mailto = msg.email_from;
+        } else {
+            msg.displayed_author = msg.author_id && msg.author_id[1] ||
+                                   msg.email_from ||
+                                   this.options.default_username;
         }
 
         // Compute the avatar_url
         if (msg.author_id && msg.author_id[0]) {
             msg.avatar_src = "/web/image/res.partner/" + msg.author_id[0] + "/image_small";
-        } else if (msg.msg_type === 'email') {
+        } else if (msg.message_type === 'email') {
             msg.avatar_src = "/mail/static/src/img/email_icon.png";
         } else {
             msg.avatar_src = "/mail/static/src/img/smiley/avatar.jpg";

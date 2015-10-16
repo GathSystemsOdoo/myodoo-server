@@ -139,7 +139,7 @@ class PurchaseOrder(models.Model):
     amount_tax = fields.Monetary(string='Taxes', store=True, readonly=True, compute='_amount_all')
     amount_total = fields.Monetary(string='Total', store=True, readonly=True, compute='_amount_all')
 
-    fiscal_position_id = fields.Many2one('account.fiscal.position', string='Fiscal Position')
+    fiscal_position_id = fields.Many2one('account.fiscal.position', string='Fiscal Position', oldname='fiscal_position')
     payment_term_id = fields.Many2one('account.payment.term', 'Payment Term')
     incoterm_id = fields.Many2one('stock.incoterms', 'Incoterm', help="International Commercial Terms are a series of predefined commercial terms used in international transactions.")
 
@@ -363,7 +363,6 @@ class PurchaseOrder(models.Model):
         This function returns an action that display existing picking orders of given purchase order ids.
         When only one found, show the picking immediately.
         '''
-        context = dict(self._context or {})
         action = self.env.ref('stock.action_picking_tree')
         result = action.read()[0]
 
@@ -385,12 +384,12 @@ class PurchaseOrder(models.Model):
         This function returns an action that display existing vendor bills of given purchase order ids.
         When only one found, show the vendor bill immediately.
         '''
-        context = dict(self._context or {})
         action = self.env.ref('account.action_invoice_tree2')
         result = action.read()[0]
 
         #override the context to get rid of the default filtering
-        result['context'] = {}
+        result['context'] = {'type': 'in_invoice', 'default_purchase_id': self.id}
+        result['domain'] = "[('purchase_id', '=', %s)]" % self.id
         invoice_ids = sum([order.invoice_ids.ids for order in self], [])
         #choose the view_mode accordingly
         if len(invoice_ids) > 1:
@@ -424,7 +423,7 @@ class PurchaseOrderLine(models.Model):
                 qty += inv_line.uom_id._compute_qty_obj(inv_line.uom_id, inv_line.quantity, line.product_uom)
             line.qty_invoiced = qty
 
-    @api.depends('move_ids.state')
+    @api.depends('order_id.state', 'move_ids.state')
     def _compute_qty_received(self):
         for line in self:
             if line.order_id.state not in ['purchase', 'done']:
@@ -475,6 +474,8 @@ class PurchaseOrderLine(models.Model):
         for line in self:
             order = line.order_id
             price_unit = line.price_unit
+            if line.taxes_id:
+                price_unit = line.taxes_id.compute_all(price_unit, currency=line.order_id.currency_id, quantity=1.0)['total_excluded']
             if line.product_uom.id != line.product_id.uom_id.id:
                 price_unit *= line.product_uom.factor / line.product_id.uom_id.factor
             if order.currency_id != order.company_id.currency_id:
@@ -581,20 +582,8 @@ class PurchaseOrderLine(models.Model):
         if product_lang.description_purchase:
             self.name += '\n' + product_lang.description_purchase
 
-        taxes = self.product_id.supplier_taxes_id
         fpos = self.order_id.fiscal_position_id
-        if fpos:
-            self.taxes_id = fpos.map_tax(taxes)
-
-        result['value'] = {
-            'name': self.name,
-            'product_uom': self.product_uom.id,
-            'product_qty': self.product_qty,
-            'date_planned': self.date_planned,
-            'taxes_id': self.taxes_id.ids,
-        }
-
-        return result
+        self.taxes_id = fpos.map_tax(self.product_id.supplier_taxes_id)
 
 
 class ProcurementRule(models.Model):
@@ -767,8 +756,7 @@ class ProcurementOrder(models.Model):
         res = []
         for procurement in self:
             if not procurement.product_id.seller_ids:
-                self.message_post([procurement.id],\
-                    _('No vendor associated to product %s. Please set one to fix this procurement.') % (procurement.product_id.name))
+                procurement.message_post(body=_('No vendor associated to product %s. Please set one to fix this procurement.') % (procurement.product_id.name))
                 continue
             supplier = procurement.product_id.seller_ids[0]
             partner = supplier.name
