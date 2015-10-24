@@ -148,8 +148,9 @@ class AccountInvoice(models.Model):
                     continue
                 # get the payment value in invoice currency
                 if payment.currency_id and amount_currency != 0:
-                    amount_to_show = amount_currency
+                    amount_to_show = -amount_currency
                 else:
+                    self.with_context(date=payment.date)
                     amount_to_show = payment.company_id.currency_id.compute(-amount, self.currency_id)
                 info['content'].append({
                     'name': payment.name,
@@ -1131,7 +1132,7 @@ class AccountInvoiceLine(models.Model):
                 if company.currency_id != currency:
                     if type in ('in_invoice', 'in_refund'):
                         self.price_unit = product.standard_price
-                    self.price_unit = self.price_unit * currency.with_context(dict(self._context or {}, date=self.date_invoice)).rate
+                    self.price_unit = self.price_unit * currency.with_context(dict(self._context or {}, date=self.invoice_id.date_invoice)).rate
 
                 if self.uom_id and self.uom_id.id != product.uom_id.id:
                     self.price_unit = self.env['product.uom']._compute_price(
