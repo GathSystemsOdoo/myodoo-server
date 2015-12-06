@@ -122,7 +122,7 @@ class hr_holidays_status(osv.osv):
 class hr_holidays(osv.osv):
     _name = "hr.holidays"
     _description = "Leave"
-    _order = "type desc, date_from asc"
+    _order = "type desc, date_from desc"
     _inherit = ['mail.thread', 'ir.needaction_mixin']
 
     def _employee_get(self, cr, uid, context=None):
@@ -352,7 +352,7 @@ class hr_holidays(osv.osv):
         if context is None:
             context = {}
         employee_id = values.get('employee_id', False)
-        context = dict(context, mail_create_nolog=True)
+        context = dict(context, mail_create_nolog=True, mail_create_nosubscribe=True)
         if not self._check_state_access_right(cr, uid, values, context):
             raise AccessError(_('You cannot set a leave request as \'%s\'. Contact a human resource manager.') % values.get('state'))
         if not values.get('name'):
@@ -426,9 +426,10 @@ class hr_holidays(osv.osv):
                 self._create_resource_leave(cr, uid, [record], context=context)
                 self.write(cr, uid, ids, {'meeting_id': meeting_id})
             elif record.holiday_type == 'category':
-                emp_ids = obj_emp.search(cr, uid, [('category_ids', 'child_of', [record.category_id.id])])
+                emp_ids = record.category_id.employee_ids.ids
                 leave_ids = []
-                for emp in obj_emp.browse(cr, uid, emp_ids):
+                batch_context = dict(context, mail_notify_force_send=False)
+                for emp in obj_emp.browse(cr, uid, emp_ids, context=context):
                     vals = {
                         'name': record.name,
                         'type': record.type,
@@ -441,7 +442,7 @@ class hr_holidays(osv.osv):
                         'parent_id': record.id,
                         'employee_id': emp.id
                     }
-                    leave_ids.append(self.create(cr, uid, vals, context=None))
+                    leave_ids.append(self.create(cr, uid, vals, context=batch_context))
                 for leave_id in leave_ids:
                     # TODO is it necessary to interleave the calls?
                     for sig in ('confirm', 'validate', 'second_validate'):
@@ -449,9 +450,6 @@ class hr_holidays(osv.osv):
         return True
 
     def holidays_confirm(self, cr, uid, ids, context=None):
-        for record in self.browse(cr, uid, ids, context=context):
-            if record.employee_id and record.employee_id.parent_id and record.employee_id.parent_id.user_id:
-                self.message_subscribe_users(cr, uid, [record.id], user_ids=[record.employee_id.parent_id.user_id.id], context=context)
         return self.write(cr, uid, ids, {'state': 'confirm'})
 
     def holidays_refuse(self, cr, uid, ids, context=None):
