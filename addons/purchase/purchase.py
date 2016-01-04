@@ -75,7 +75,7 @@ class PurchaseOrder(models.Model):
         types = type_obj.search([('code', '=', 'incoming'), ('warehouse_id.company_id', '=', company_id)])
         if not types:
             types = type_obj.search([('code', '=', 'incoming'), ('warehouse_id', '=', False)])
-        return types[0].id if types else False
+        return types[:1]
 
     @api.depends('order_line.move_ids.picking_id')
     def _compute_picking(self):
@@ -337,7 +337,8 @@ class PurchaseOrder(models.Model):
                 res = order._prepare_picking()
                 picking = self.env['stock.picking'].create(res)
                 moves = order.order_line.filtered(lambda r: r.product_id.type in ['product', 'consu'])._create_stock_moves(picking)
-                moves.action_confirm()
+                move_ids = moves.action_confirm()
+                moves = self.env['stock.move'].browse(move_ids)
                 moves.force_assign()
         return True
 
@@ -460,7 +461,7 @@ class PurchaseOrderLine(models.Model):
     price_tax = fields.Monetary(compute='_compute_amount', string='Tax', store=True)
 
     order_id = fields.Many2one('purchase.order', string='Order Reference', select=True, required=True, ondelete='cascade')
-    account_analytic_id = fields.Many2one('account.analytic.account', string='Analytic Account')
+    account_analytic_id = fields.Many2one('account.analytic.account', string='Analytic Account', domain=[('account_type', '=', 'normal')])
     company_id = fields.Many2one('res.company', related='order_id.company_id', string='Company', store=True, readonly=True)
     state = fields.Selection(related='order_id.state', stored=True)
 
@@ -812,12 +813,19 @@ class ProcurementOrder(models.Model):
                 continue
             supplier = suppliers[0]
             partner = supplier.name
+
+            gpo = procurement.rule_id.group_propagation_option
+            group = (gpo == 'fixed' and procurement.rule_id.group_id) or \
+                    (gpo == 'propagate' and procurement.group_id) or False
+
             domain = (
                 ('partner_id', '=', partner.id),
                 ('state', '=', 'draft'),
                 ('picking_type_id', '=', procurement.rule_id.picking_type_id.id),
                 ('company_id', '=', procurement.company_id.id),
                 ('dest_address_id', '=', procurement.partner_dest_id.id))
+            if group:
+                domain += (('group_id', '=', group.id),)
 
             if domain in cache:
                 po = cache[domain]

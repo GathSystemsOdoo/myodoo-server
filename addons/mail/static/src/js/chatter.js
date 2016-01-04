@@ -2,7 +2,7 @@ odoo.define('mail.Chatter', function (require) {
 "use strict";
 
 var chat_manager = require('mail.chat_manager');
-var ChatComposer = require('mail.ChatComposer');
+var composer = require('mail.composer');
 var ChatThread = require('mail.ChatThread');
 
 var ajax = require('web.ajax');
@@ -432,7 +432,7 @@ var Followers = form_common.AbstractField.extend({
 // popup when suggested partner is selected without email, or other
 // informations), and the button to open the full composer wizard.
 // -----------------------------------------------------------------------------
-var ChatterComposer = ChatComposer.extend({
+var ChatterComposer = composer.BasicComposer.extend({
     template: 'mail.chatter.ChatComposer',
 
     init: function (parent, dataset, options) {
@@ -445,6 +445,9 @@ var ChatterComposer = ChatComposer.extend({
             is_log: false,
             internal_subtypes: [],
         });
+        if (this.options.is_log) {
+            this.options.send_text = _('Log');
+        }
         this.events = _.extend(this.events, {
             'click .o_composer_button_full_composer': 'on_open_full_composer',
         });
@@ -716,6 +719,7 @@ var Chatter = form_common.AbstractField.extend({
             display_order: ChatThread.ORDER.DESC,
             display_document_link: false,
             display_needactions: false,
+            squash_close_messages: false,
         });
         this.thread.on('load_more_messages', this, this.load_more_messages);
         this.thread.on('toggle_star_status', this, function (message_id) {
