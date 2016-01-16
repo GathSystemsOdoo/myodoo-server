@@ -195,7 +195,7 @@
 
 <t t-name="WebClient.DebugManager">
     <li class="oe_debug_manager">
-        <a href="#" t-att-title='_t("Open Debug Menu")' class="dropdown-toggle oe_debug_button" data-toggle="dropdown">
+        <a href="#" title="Open Debug Menu" class="dropdown-toggle oe_debug_button" data-toggle="dropdown">
             <span class="fa fa-bug"/>
             <b class="caret"/>
         </a>
@@ -1114,13 +1114,6 @@
 <t t-name="One2Many.listview" t-extend="ListView">
     <t t-jquery="thead > tr:first">
         this.removeAttr('t-if');
-    </t>
-
-    <t t-jquery="td.oe-actions">
-        this.removeAttr('t-if');
-    </t>
-    <t t-jquery="td.oe-actions" t-operation="prepend">
-        <h3 class="oe_view_title"><t t-esc="fields_view.arch.attrs.string"/></h3>
     </t>
 </t>
 
