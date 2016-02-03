@@ -39,11 +39,12 @@ function open_chat (session) {
     var chat_session = _.findWhere(chat_sessions, {id: session.id});
     if (!chat_session) {
         var prefix = !session.is_chat ? "#" : "";
+        var options = { input_less: session.mass_mailing };
         chat_session = {
             id: session.id,
             uuid: session.uuid,
             name: session.name,
-            window: new ExtendedChatWindow(web_client, session.id, prefix + session.name, session.is_folded, session.unread_counter),
+            window: new ExtendedChatWindow(web_client, session.id, prefix + session.name, session.is_folded, session.unread_counter, options),
         };
         chat_session.window.on("close_chat_session", null, function () {
             close_chat(chat_session);
@@ -343,8 +344,10 @@ core.bus.on('web_client_ready', null, function () {
         var chat_session = _.findWhere(chat_sessions, {id: channel.id});
         if (!chat_session || chat_session.window.folded) {
             chat_manager.detach_channel(channel);
-        } else if (chat_session && chat_session.window.is_hidden) {
+        } else if (chat_session.window.is_hidden) {
             make_session_visible(chat_session);
+        } else {
+            chat_session.window.focus_input();
         }
     });
 
@@ -370,7 +373,7 @@ return ChatWindow.extend({
                 self.$('.o_chat_search_input input')
                     .autocomplete({
                         source: function(request, response) {
-                            chat_manager.search_partner(request.term).done(response);
+                            chat_manager.search_partner(request.term, 10).done(response);
                         },
                         select: function(event, ui) {
                             self.trigger('open_dm_session', ui.item.id);

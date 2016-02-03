@@ -15,7 +15,9 @@ var HEIGHT_FOLDED = '28px';
 return Widget.extend({
     template: "mail.ChatWindow",
     events: {
+        "click .o_chat_input": "focus_input", // focus even if jquery's blockUI is enabled
         "keydown .o_chat_input": "on_keydown",
+        "keypress .o_chat_input": "on_keypress",
         "click .o_chat_window_close": "on_click_close",
         "click .o_chat_title": "on_click_fold",
     },
@@ -24,10 +26,11 @@ return Widget.extend({
         this._super(parent);
         this.title = title;
         this.channel_id = channel_id;
-        this.placeholder = _t("Say something");
         this.folded = is_folded;
         this.options = _.defaults(options || {}, {
             display_stars: true,
+            placeholder: _t("Say something"),
+            input_less: false,
         });
         this.unread_msgs = unread_msgs || 0;
         this.is_hidden = false;
@@ -46,6 +49,8 @@ return Widget.extend({
 
         if (this.folded) {
             this.$el.css('height', HEIGHT_FOLDED);
+        } else {
+            this.focus_input();
         }
         var def = this.thread.replace(this.$('.o_chat_content'));
         return $.when(this._super(), def);
@@ -67,8 +72,14 @@ return Widget.extend({
         this.folded = _.isBoolean(fold) ? fold : !this.folded;
         if (!this.folded) {
             this.thread.scroll_to();
+            this.focus_input();
         }
         this.fold();
+    },
+    focus_input: function () {
+        if (!config.device.touch) {
+            this.$input.focus();
+        }
     },
     do_show: function () {
         this.is_hidden = false;
@@ -82,7 +93,11 @@ return Widget.extend({
         this.is_hidden = _.isBoolean(display) ? !display : !this.is_hidden;
         this._super.apply(this, arguments);
     },
+    on_keypress: function (event) {
+        event.stopPropagation(); // to prevent jquery's blockUI to cancel event
+    },
     on_keydown: function (event) {
+        event.stopPropagation(); // to prevent jquery's blockUI to cancel event
         // ENTER key (avoid requiring jquery ui for external livechat)
         if (event.which === 13) {
             var content = _.str.trim(this.$input.val());
