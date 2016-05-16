@@ -2,6 +2,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 import logging
+import psycopg2
 import time
 from datetime import datetime
 import uuid
@@ -688,9 +689,21 @@ class pos_order(osv.osv):
                                                  ('user_id', '=', closed_session.user_id.id)],
                                        limit=1, order="start_at DESC", context=context)
 
+        _logger.warning('session %s (ID: %s) was closed but received order %s (total: %s) belonging to it',
+                        closed_session.name,
+                        closed_session.id,
+                        order['name'],
+                        order['amount_total'])
+
         if open_sessions:
-            return open_sessions[0]
+            open_session = session.browse(cr, uid, open_sessions[0], context=context)
+            _logger.warning('using session %s (ID: %s) for order %s instead',
+                            open_session.name,
+                            open_session.id,
+                            order['name'])
+            return open_session.id
         else:
+            _logger.warning('attempting to create new session for order %s', order['name'])
             new_session_id = session.create(cr, uid, {
                 'config_id': closed_session.config_id.id,
             }, context=context)
@@ -700,6 +713,23 @@ class pos_order(osv.osv):
             new_session.signal_workflow('open')
 
             return new_session_id
+
+    def _match_payment_to_invoice(self, cr, uid, order, context=None):
+        account_precision = self.pool.get('decimal.precision').precision_get(cr, uid, 'Account')
+
+        # ignore orders with an amount_paid of 0 because those are returns through the POS
+        if not float_is_zero(order['amount_return'], account_precision) and not float_is_zero(order['amount_paid'], account_precision):
+            cur_amount_paid = 0
+            payments_to_keep = []
+            for payment in order.get('statement_ids'):
+                if cur_amount_paid + payment[2]['amount'] > order['amount_total']:
+                    payment[2]['amount'] = order['amount_total'] - cur_amount_paid
+                    payments_to_keep.append(payment)
+                    break
+                cur_amount_paid += payment[2]['amount']
+                payments_to_keep.append(payment)
+            order['statement_ids'] = payments_to_keep
+            order['amount_return'] = 0
 
     def _process_order(self, cr, uid, order, context=None):
         session = self.pool.get('pos.session').browse(cr, uid, order['pos_session_id'], context=context)
@@ -757,11 +787,18 @@ class pos_order(osv.osv):
         for tmp_order in orders_to_save:
             to_invoice = tmp_order['to_invoice']
             order = tmp_order['data']
+
+            if to_invoice:
+                self._match_payment_to_invoice(cr, uid, order, context=context)
+
             order_id = self._process_order(cr, uid, order, context=context)
             order_ids.append(order_id)
 
             try:
                 self.signal_workflow(cr, uid, [order_id], 'paid')
+            except psycopg2.OperationalError:
+                # do not hide transactional errors, the order(s) won't be saved!
+                raise
             except Exception as e:
                 _logger.error('Could not fully process the POS Order: %s', tools.ustr(e))
 
