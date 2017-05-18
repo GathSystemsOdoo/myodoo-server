@@ -3424,6 +3424,26 @@ instance.web.form.CompletionFieldMixin = {
                 };
             });
 
+			//Search More on Enter, autofill default filters
+			$('input[type=text]').on('keydown', function(e) {
+				//console.log(dataset["model"]);
+				if (e.which == 13) {
+					e.preventDefault();
+					var activeValue = $(document.activeElement).val();
+					//console.log("Active Value: " + activeValue)
+					if (activeValue != ""){
+						if (dataset["model"] == "res.partner")
+						{
+							self._search_create_popup("search", undefined, {'search_default_name':activeValue});
+						}
+						if (dataset["model"] == "product.product")
+						{
+							self._search_create_popup("search", undefined, {"search_default_name":activeValue});
+						}
+					}
+				}
+			});					
+			
             // search more... if more results that max
             if (values.length > self.limit) {
                 values = values.slice(0, self.limit);
