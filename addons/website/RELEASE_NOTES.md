@@ -1,5 +1,20 @@
 ## Modul website
 
+#### 17.05.2017
+#### Version 1.1.8
+##### CHG
+- Änderung der Datei website_templates.xml. Unsere urspr. Version wiederhergestellt damit wir die ROBOTS wieder generieren können
+
+#### 16.05.2017
+#### Version 1.1.7
+##### CHG
+- Änderung der Datei website_templates.xml damit wir die SEO Erweiterungen von PR1 verwenden können 
+
+#### 09.05.2017
+#### Version 1.1.6
+##### ADD
+- Google Analytics um den anonymen Teil (anonymizeIP) erweitert.
+
 #### 06.03.2017
 #### Version 1.1.5
 ##### CHG

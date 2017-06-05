@@ -1,3 +1,68 @@
+#### 31.05.2017
+#### web_kanban_gauge, 1.0.2
+##### CHG
+- Anpassung der Anzeige des Gauge-Widgets z.B. 2k -> 2000
+
+#### 29.05.2017
+#### sale, 1.3.7
+##### CHG/FIX
+- Ticket #4252: Bei prozentualer Abrechnung wird jetzt eine Umsatzsteuer für die prozentuale Anzahlung erzeugt. (FIX aus https://github.com/odoo/odoo/pull/6073/commits/2ba5e58b6fafa24ffffb233057824074f79f1515)
+
+#### 23.05.2017
+#### mrp, 1.1.15
+##### CHG
+- Übersetzung geändert: Im Arbeitsplan "Tätigkeit" zu "Arbeitsplan" geändert.
+
+#### 20.04.2017
+#### mrp, 1.1.14
+##### CHG
+- Feld "code" auf size = 64 geändert (vorher 8)
+
+#### 11.04.2017
+#### product, 1.1.9
+##### CHG
+- Übersetzung angepasst "Mininale Menge" in "Mindestbestellmenge"
+
+#### 04.04.2017
+#### mrp, 1.1.13
+##### CHG
+- Übersetzung angepasst
+
+#### 04.04.2017
+#### mrp_operations, 1.0.4
+##### CHG
+- Übersetzung angepasst
+
+#### 03.04.2017
+#### mrp_operations, 1.0.3
+##### CHG
+- Feld 'date_planned_end' als store=True definiert. 
+
+#### 28.03.2017
+#### mrp, 1.1.12
+##### CHG
+- Übersetzungen  "Anzahl Zyklen" in "Anzahl Teile".
+
+#### 28.03.2017
+#### mrp, 1.1.11
+##### CHG
+- Übersetzungen angepasst.
+
+#### 28.03.2017
+#### mrp_operations, 1.1.2
+##### CHG
+- Übersetzung angepasst + Feld "Zwingende Abfolge" auf unsichtbar gesetzt.
+
+#### 27.03.2017
+#### mrp, 1.1.10
+##### CHG
+- Menüpunkt "Stückliste Komponenten" wurde entfernt (auskommentiert).
+
+#### 27.03.2017
+#### mrp, 1.1.9
+##### CHG
+- Anpassung Übersetzungen.
+
 #### 16.03.2017
 #### mrp, 1.1.8
 ##### CHG

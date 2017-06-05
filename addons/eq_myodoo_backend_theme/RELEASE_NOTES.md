@@ -1,5 +1,29 @@
 ## Modul eq_myodoo_backend_theme
 
+#### Version 1.1.22
+##### ADD
+- in das Logging eine Rechteabfrage eingebaut.
+
+#### Version 1.1.21
+##### CHG
+- zuvor gelöschte main-manual-theme.css wieder leer eingefügt.
+
+### 20.04.2017
+#### Version 1.1.20
+##### CHG
+- Logausgabe bei keiner vorhandenen main-manual-theme.css verhindert, sodass diese Datei erstellt wird.
+
+### 18.04.2017
+#### Version 1.1.19
+##### ADD
+- Loggingnachrichten werden jetzt auch während eines Updates ind die Odoo-Datenbank ausgegeben.
+
+### 13.04.2017
+#### Version 1.1.18
+##### CHG
+- Loggingnachrichten erweitert werden nun in Odoo-Datenbank unter "Protokollierung" geschrieben.
+- Flag "Backend Theme Log" eingebaut (Unter Einstellungen -> Grundeinstellungen -> Button "Backend-Theme konfigurieren" betätigen -> ganz unten im neuen Fenster)
+- Errors werden zunächst immer ausgegeben
 
 ### 19.01.2017
 #### Version 1.1.17
