@@ -7,7 +7,7 @@ class sale_order_line(osv.osv):
     _inherit = "sale.order.line"
 
     _columns = {
-        'qty_available': fields.float('Qty Disponible',digits_compute= dp.get_precision('Product UoS')),
+        'qty_available': fields.float('Lagernd',digits_compute= dp.get_precision('Product UoS')),
     }    
 
 sale_order_line()

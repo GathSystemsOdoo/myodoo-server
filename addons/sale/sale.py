@@ -1201,6 +1201,11 @@ class sale_order_line(osv.osv):
 
         if not uom2:
             uom2 = product_obj.uom_id
+
+        #Calculate Qty Disponible
+        qty_available = self.pool.get('product.product').browse(cr, uid, product, context=None).qty_available
+        result['qty_available'] = qty_available
+
         # get unit price
 
         if not pricelist:
